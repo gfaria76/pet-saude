@@ -46,6 +46,8 @@ Regras adicionais:
 - `avaliacoes_risco` e `logs_auditoria` são **append-only** (update e delete negados).
 - Nenhuma exclusão física de família, domicílio ou indivíduo: inativação por `status`.
 - O avaliador de uma avaliação é sempre o usuário autenticado (`avaliadorId == uid`); não dá para registrar em nome de outro.
+- O resumo de risco da família (usado no painel de prioridades) não pode ser alterado diretamente: só muda junto com a criação da avaliação correspondente.
+- Limitações conhecidas (a resolver na Cloud Function planejada): o conteúdo de cada item de `fatoresDeterminantes` não é inspecionado pelas regras; o `LogAuditoria` ainda é gravado pelo cliente e não é obrigatório pelas regras; `dataAvaliacao` vem do cliente — ordene o histórico por `registradoEm`.
 - Toda consulta de listagem deve filtrar pelo território (`municipioId`, `equipeId`, `microareaId`), senão é negada.
 
 ---

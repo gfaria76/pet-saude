@@ -8,7 +8,8 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-pet-saude \"vitest run --config vitest.rules.config.ts\""
   },
   "dependencies": {
     "@nuxt/fonts": "0.14.0",
@@ -19,6 +20,8 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@iconify-json/healthicons": "^1.2.13",
     "@iconify-json/lucide": "^1.2.136",
     "@nuxtjs/tailwindcss": "^6.14.0",
     "nuxt-qrcode": "^0.4.10",

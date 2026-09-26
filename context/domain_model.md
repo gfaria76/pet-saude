@@ -55,9 +55,9 @@ Edificação e suas condições de infraestrutura.
 
 Núcleo familiar coabitante no domicílio.
 
-- **Atributos:** `prontuarioFamiliar`, `domicilioId`, território, `responsavelNome`, `responsavelId`, `contato` (opcional — previsto no Relatório Técnico), `status` (`ATIVA`, `MUDOU_SE`, `DESMEMBRADA`), `quantidadeMembros`, resumo da última avaliação (`ultimaClassificacaoRisco`, `ultimaPontuacaoRisco`, `dataUltimaAvaliacao`).
+- **Atributos:** `prontuarioFamiliar`, `domicilioId`, território, `responsavelNome`, `responsavelId`, `contato` (opcional — previsto no Relatório Técnico), `status` (`ATIVA`, `MUDOU_SE`, `DESMEMBRADA`), `quantidadeMembros`, resumo da última avaliação (`ultimaClassificacaoRisco`, `ultimaPontuacaoRisco`, `dataUltimaAvaliacao`, `ultimaAvaliacaoId`).
 - **Invariante:** exatamente um Responsável Familiar ativo.
-- O resumo da última avaliação é uma **cópia de conveniência** para o painel; a fonte da verdade é o histórico em `AvaliacaoRisco`.
+- O resumo da última avaliação é uma **cópia de conveniência** para o painel; a fonte da verdade é o histórico em `AvaliacaoRisco`. Uma família nasce com resumo R0 / 0 pontos, e o resumo só muda **no mesmo lote de gravação** que cria a avaliação apontada por `ultimaAvaliacaoId`, com valores idênticos (garantido em `firestore.rules`).
 
 ### 2.6. `Individuo` — schema `IndividuoSchema`
 
