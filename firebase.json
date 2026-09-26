@@ -16,15 +16,18 @@
       ]
     }
   ],
-  "database": {
-    "rules": "database.rules.json"
-  },
   "auth": {
     "providers": {
       "googleSignIn": {
         "oAuthBrandDisplayName": "Pet Saude UFMS",
-        "supportEmail": "support@undefined.firebaseapp.com"
+        "supportEmail": "gedson.faria@ufms.br"
       }
     }
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8080
+    },
+    "singleProjectMode": true
   }
 }
