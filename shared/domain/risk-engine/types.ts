@@ -38,13 +38,34 @@ export enum IndicadorRiscoCodigo {
   IND_ADENSAMENTO_EXCESSIVO = 'IND_ADENSAMENTO_EXCESSIVO'
 }
 
+/** Perfis profissionais (espelham o custom claim `perfil` de firestore.rules). */
+export enum PerfilProfissional {
+  ACS = 'ACS',
+  ENFERMEIRO = 'ENFERMEIRO',
+  MEDICO = 'MEDICO',
+  TECNICO_ENFERMAGEM = 'TECNICO_ENFERMAGEM',
+  CIRURGIAO_DENTISTA = 'CIRURGIAO_DENTISTA',
+  COORDENADOR_APS = 'COORDENADOR_APS',
+  ADMIN = 'ADMIN'
+}
+
+export type EvolucaoRisco = 'AGRAVAMENTO' | 'ESTAVEL' | 'MELHORIA'
+
 export interface FatorDeterminanteRisco {
   readonly indicadorCodigo: IndicadorRiscoCodigo
   readonly descricao: string
   readonly pontuacaoAtribuida: number
   readonly tipoSentinela: TipoSentinela
+  /** Membro da família associado. O nome é resolvido na UI, nunca gravado aqui (LGPD). */
   readonly individuoId?: string
-  readonly individuoNome?: string
+}
+
+/** Indicador presente, coletado, mas sem peso nesta versão da escala (`peso: null`). */
+export interface IndicadorNaoPontuado {
+  readonly indicadorCodigo: IndicadorRiscoCodigo
+  readonly descricao: string
+  readonly tipoSentinela: TipoSentinela
+  readonly individuoId?: string
 }
 
 export interface ComparativoAvaliacaoAnterior {
@@ -53,17 +74,28 @@ export interface ComparativoAvaliacaoAnterior {
   readonly classificacaoAnterior: FaixaRisco
   readonly pontuacaoAnterior: number
   readonly variacaoPontos: number
-  readonly evolucaoRisco: 'AGRAVAMENTO' | 'ESTAVEL' | 'MELHORIA'
+  readonly evolucaoRisco: EvolucaoRisco
   readonly fatoresAdicionados: ReadonlyArray<FatorDeterminanteRisco>
   readonly fatoresResolvidos: ReadonlyArray<FatorDeterminanteRisco>
+}
+
+/** Quem avalia e quando — injetado para o cálculo ser determinístico e auditável. */
+export interface ContextoAvaliacao {
+  /** Data/hora ISO 8601 da avaliação. */
+  readonly dataAvaliacao: string
+  readonly avaliadorId: string
+  readonly avaliadorPerfil: PerfilProfissional
 }
 
 export interface ResultadoEstratificacaoRisco {
   readonly versaoEscala: string
   readonly dataAvaliacao: string
+  readonly avaliadorId: string
+  readonly avaliadorPerfil: PerfilProfissional
   readonly pontuacaoTotal: number
   readonly classificacao: FaixaRisco
   readonly fatoresDeterminantes: ReadonlyArray<FatorDeterminanteRisco>
+  readonly indicadoresNaoPontuados: ReadonlyArray<IndicadorNaoPontuado>
   readonly regraDecisao: string
   readonly comparativoAvaliacaoAnterior?: ComparativoAvaliacaoAnterior
 }
@@ -77,14 +109,14 @@ export interface LimitesFaixaRisco {
 export interface MetaIndicador {
   readonly codigo: IndicadorRiscoCodigo
   readonly descricao: string
-  readonly pesoPadrao: number
   readonly tipo: TipoSentinela
 }
 
 export interface ConfiguracaoEscalaRisco {
   readonly versao: string
   readonly nome: string
-  readonly pesos: Record<IndicadorRiscoCodigo, number>
+  /** Peso por indicador. `null` = coletado, mas não pontuado nesta versão. */
+  readonly pesos: Readonly<Record<IndicadorRiscoCodigo, number | null>>
   readonly limitesCorte: LimitesFaixaRisco
   readonly condicoesAgravantesDiretas?: ReadonlyArray<IndicadorRiscoCodigo>
 }
@@ -93,17 +125,18 @@ export interface ItemIndicadorEntrada {
   readonly codigo: IndicadorRiscoCodigo
   readonly ativo: boolean
   readonly individuoId?: string
-  readonly individuoNome?: string
+}
+
+export interface AvaliacaoAnteriorEntrada {
+  readonly id?: string
+  readonly data?: string
+  readonly pontuacao: number
+  readonly classificacao: FaixaRisco
+  readonly fatores: ReadonlyArray<FatorDeterminanteRisco>
 }
 
 export interface DadosAvaliacaoEntrada {
   readonly familiaId: string
   readonly indicadores: ReadonlyArray<ItemIndicadorEntrada>
-  readonly avaliacaoAnterior?: {
-    readonly id?: string
-    readonly data?: string
-    readonly pontuacao: number
-    readonly classificacao: FaixaRisco
-    readonly fatores: ReadonlyArray<FatorDeterminanteRisco>
-  }
+  readonly avaliacaoAnterior?: AvaliacaoAnteriorEntrada
 }

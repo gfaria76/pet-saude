@@ -14,7 +14,7 @@ export default defineNuxtPlugin(() => {
     appId: config.public.firebaseAppId
   }
 
-  const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+  const app: FirebaseApp = getApps()[0] ?? initializeApp(firebaseConfig)
   const db: Firestore = getFirestore(app)
   const auth: Auth = getAuth(app)
 

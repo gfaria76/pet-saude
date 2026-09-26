@@ -81,17 +81,20 @@ O conjunto padrão do app é **[Health Icons](https://healthicons.org)** (`healt
 | Saneamento inadequado | `healthicons:water-sanitation` |
 | Relação morador/cômodo | `healthicons:i-groups-perspective-crowd` |
 
-### 4.3. Ícones gerais
+### 4.3. Ícones gerais (`app/utils/icones.ts`)
 
 | Uso | Ícone |
 | :--- | :--- |
-| Logo do app / ACS | `healthicons:community-healthworker` |
-| Família | `healthicons:ui-folder-family` |
-| Pessoa / avaliador | `healthicons:person` |
-| UBS / município | `healthicons:ambulatory-clinic` / `healthicons:city` |
-| Selo LGPD | `healthicons:health-data-security` |
-| Data da avaliação | `healthicons:calendar` |
-| Registro confirmado | `healthicons:i-documents-accepted` |
-| Estado vazio | `healthicons:question-circle` |
+| Logo do app | `healthicons:community-healthworker` |
+| Avaliador | `healthicons:community-healthworker-outline` |
+| Família | `healthicons:ui-folder-family-outline` |
+| Pessoa | `healthicons:person-outline` |
+| UBS / município | `healthicons:ambulatory-clinic-outline` / `healthicons:city-outline` |
+| Selo LGPD | `healthicons:health-data-security-outline` |
+| Data da avaliação | `healthicons:calendar-outline` |
+| Registro confirmado | `healthicons:i-documents-accepted-outline` |
+| Estado vazio | `healthicons:question-circle-outline` |
+| Escala / explicação | `healthicons:chart-line-outline` |
+| **Exceções Lucide** | `lucide:save`, `filter`, `x`, `search`, `check`, `scale` (regra de decisão), `trending-up`, `trending-down`, `minus` |
 
 Os nomes foram conferidos na API do Iconify; a escolha visual final deve ser validada com a equipe de campo.

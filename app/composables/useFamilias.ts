@@ -1,170 +1,193 @@
 import { ref, computed } from 'vue'
 import {
+  calcularEstratificacaoRisco,
   FaixaRisco,
   IndicadorRiscoCodigo,
-  TipoSentinela,
+  PerfilProfissional,
+  type AvaliacaoAnteriorEntrada,
+  type ContextoAvaliacao,
   type ResultadoEstratificacaoRisco
 } from '~~/shared/domain/risk-engine'
-import type { FamiliaDoc, AvaliacaoRiscoDoc } from '~~/shared/domain/schemas'
+import {
+  montarDocumentoAvaliacao,
+  type AvaliacaoRiscoDoc,
+  type FamiliaDoc
+} from '~~/shared/domain/schemas'
 
 /**
- * Famílias e avaliações com dados 100% fictícios para demonstração e desenvolvimento seguro (LGPD).
- * Territórios piloto: UBSs de Coxim e Corumbá (MS).
+ * Estado da tela do painel territorial.
+ *
+ * Enquanto a persistência no Firestore não existe (context/architecture.md),
+ * os dados ficam em memória e são 100% SINTÉTICOS (LGPD). O fluxo já segue o
+ * modelo real: histórico append-only por família, resumo da família derivado
+ * da última avaliação e documento validado pelo Zod antes de "gravar".
  */
-const FAMILIAS_INICIAIS_SINTETICAS: FamiliaDoc[] = [
+
+/** Avaliador da sessão de demonstração (fictício). Virá do Firebase Auth. */
+const AVALIADOR_DEMO = {
+  id: 'uid-demo-acs',
+  nome: 'ACS Demonstração (Fictício)',
+  perfil: PerfilProfissional.ACS
+} as const
+
+type FamiliaSemResumo = Omit<FamiliaDoc,
+  'ultimaClassificacaoRisco' | 'ultimaPontuacaoRisco' | 'dataUltimaAvaliacao' | 'ultimaAvaliacaoId'>
+
+const FAMILIAS_SINTETICAS: FamiliaSemResumo[] = [
   {
-    id: 'fam-coxim-001',
-    prontuarioFamiliar: 'CX-1042',
-    domicilioId: 'dom-001',
-    microareaId: 'MA-01',
-    equipeId: 'ESF-PANTANAL-01',
-    municipioId: 'coxim',
-    responsavelNome: 'Maria Severina da Silva (Fictícia)',
-    responsavelId: 'ind-001',
-    status: 'ATIVA',
-    quantidadeMembros: 4,
-    ultimaClassificacaoRisco: FaixaRisco.RISCO_MAIOR_R3,
-    ultimaPontuacaoRisco: 8,
-    dataUltimaAvaliacao: '2026-09-18T14:30:00Z'
+    id: 'fam-coxim-001', prontuarioFamiliar: 'CX-1042', domicilioId: 'dom-001',
+    municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', microareaId: 'MA-01',
+    responsavelNome: 'Maria Fictícia dos Santos', responsavelId: 'ind-001',
+    status: 'ATIVA', quantidadeMembros: 4
   },
   {
-    id: 'fam-coxim-002',
-    prontuarioFamiliar: 'CX-1088',
-    domicilioId: 'dom-002',
-    microareaId: 'MA-01',
-    equipeId: 'ESF-PANTANAL-01',
-    municipioId: 'coxim',
-    responsavelNome: 'Antônio Carlos dos Santos (Fictício)',
-    responsavelId: 'ind-002',
-    status: 'ATIVA',
-    quantidadeMembros: 3,
-    ultimaClassificacaoRisco: FaixaRisco.RISCO_MEDIO_R2,
-    ultimaPontuacaoRisco: 5,
-    dataUltimaAvaliacao: '2026-09-15T09:15:00Z'
+    id: 'fam-coxim-002', prontuarioFamiliar: 'CX-1088', domicilioId: 'dom-002',
+    municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', microareaId: 'MA-01',
+    responsavelNome: 'Família Silva Exemplo', responsavelId: 'ind-002',
+    status: 'ATIVA', quantidadeMembros: 3
   },
   {
-    id: 'fam-corumba-003',
-    prontuarioFamiliar: 'CB-2031',
-    domicilioId: 'dom-003',
-    microareaId: 'MA-02',
-    equipeId: 'ESF-FRONTEIRA-02',
-    municipioId: 'corumba',
-    responsavelNome: 'Tereza Francisca de Souza (Fictícia)',
-    responsavelId: 'ind-003',
-    status: 'ATIVA',
-    quantidadeMembros: 5,
-    ultimaClassificacaoRisco: FaixaRisco.RISCO_MENOR_R1,
-    ultimaPontuacaoRisco: 3,
-    dataUltimaAvaliacao: '2026-09-10T11:00:00Z'
+    id: 'fam-corumba-003', prontuarioFamiliar: 'CB-2031', domicilioId: 'dom-003',
+    municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', microareaId: 'MA-02',
+    responsavelNome: 'Cidadã Teste Souza', responsavelId: 'ind-003',
+    status: 'ATIVA', quantidadeMembros: 5
   },
   {
-    id: 'fam-corumba-004',
-    prontuarioFamiliar: 'CB-2095',
-    domicilioId: 'dom-004',
-    microareaId: 'MA-03',
-    equipeId: 'ESF-FRONTEIRA-02',
-    municipioId: 'corumba',
-    responsavelNome: 'João Ribeiro de Lima (Fictício)',
-    responsavelId: 'ind-004',
-    status: 'ATIVA',
-    quantidadeMembros: 2,
-    ultimaClassificacaoRisco: FaixaRisco.SEM_RISCO_R0,
-    ultimaPontuacaoRisco: 0,
-    dataUltimaAvaliacao: '2026-08-20T16:00:00Z'
+    id: 'fam-corumba-004', prontuarioFamiliar: 'CB-2095', domicilioId: 'dom-004',
+    municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', microareaId: 'MA-03',
+    responsavelNome: 'Cidadão Teste Lima', responsavelId: 'ind-004',
+    status: 'ATIVA', quantidadeMembros: 2
   }
 ]
 
-const AVALIACOES_INICIAIS: Record<string, ResultadoEstratificacaoRisco> = {
-  'fam-coxim-001': {
-    versaoEscala: 'COELHO_SAVASSI_V1',
-    dataAvaliacao: '2026-09-18T14:30:00Z',
-    pontuacaoTotal: 8,
-    classificacao: FaixaRisco.RISCO_MAIOR_R3,
-    regraDecisao: 'Pontuação de 8 pontos (>= 7) define Risco Máximo (R3).',
-    fatoresDeterminantes: [
-      {
-        indicadorCodigo: IndicadorRiscoCodigo.IND_ACAMADO,
-        descricao: 'Pessoa acamada no domicílio',
-        pontuacaoAtribuida: 3,
-        tipoSentinela: TipoSentinela.BIOLOGICO_DEPENDENCIA,
-        individuoNome: 'Benedito da Silva (Idoso Acamado)'
-      },
-      {
-        indicadorCodigo: IndicadorRiscoCodigo.IND_DESNUTRICAO_GRAVE,
-        descricao: 'Desnutrição grave (criança, gestante ou idoso)',
-        pontuacaoAtribuida: 3,
-        tipoSentinela: TipoSentinela.BIOLOGICO_NUTRICIONAL
-      },
-      {
-        indicadorCodigo: IndicadorRiscoCodigo.IND_DROGADICAO,
-        descricao: 'Uso abusivo de álcool e/ou outras drogas',
-        pontuacaoAtribuida: 2,
-        tipoSentinela: TipoSentinela.SOCIAL_COMPORTAMENTAL
-      }
-    ],
-    comparativoAvaliacaoAnterior: {
-      classificacaoAnterior: FaixaRisco.RISCO_MEDIO_R2,
-      pontuacaoAnterior: 5,
-      variacaoPontos: +3,
-      evolucaoRisco: 'AGRAVAMENTO',
-      fatoresAdicionados: [
-        {
-          indicadorCodigo: IndicadorRiscoCodigo.IND_ACAMADO,
-          descricao: 'Pessoa acamada no domicílio',
-          pontuacaoAtribuida: 3,
-          tipoSentinela: TipoSentinela.BIOLOGICO_DEPENDENCIA
-        }
-      ],
-      fatoresResolvidos: []
-    }
-  },
-  'fam-coxim-002': {
-    versaoEscala: 'COELHO_SAVASSI_V1',
-    dataAvaliacao: '2026-09-15T09:15:00Z',
-    pontuacaoTotal: 5,
-    classificacao: FaixaRisco.RISCO_MEDIO_R2,
-    regraDecisao: 'Pontuação de 5 pontos (5 a 6) define Risco Médio (R2).',
-    fatoresDeterminantes: [
-      {
-        indicadorCodigo: IndicadorRiscoCodigo.IND_DESEMPREGO,
-        descricao: 'Desemprego do provedor familiar',
-        pontuacaoAtribuida: 2,
-        tipoSentinela: TipoSentinela.SOCIAL_ECONOMICO
-      },
-      {
-        indicadorCodigo: IndicadorRiscoCodigo.IND_DROGADICAO,
-        descricao: 'Uso abusivo de álcool e/ou outras drogas',
-        pontuacaoAtribuida: 2,
-        tipoSentinela: TipoSentinela.SOCIAL_COMPORTAMENTAL
-      },
-      {
-        indicadorCodigo: IndicadorRiscoCodigo.IND_HIPERTENSAO,
-        descricao: 'Hipertensão arterial sistêmica',
-        pontuacaoAtribuida: 1,
-        tipoSentinela: TipoSentinela.BIOLOGICO_CRONICO
-      }
-    ]
+/** Visitas sintéticas, em ordem cronológica, calculadas pelo próprio motor. */
+const VISITAS_SINTETICAS: Record<string, Array<{ data: string; indicadores: IndicadorRiscoCodigo[] }>> = {
+  'fam-coxim-001': [
+    { data: '2026-06-10T09:00:00.000Z', indicadores: [IndicadorRiscoCodigo.IND_DESNUTRICAO_GRAVE, IndicadorRiscoCodigo.IND_DROGADICAO] },
+    { data: '2026-09-18T14:30:00.000Z', indicadores: [IndicadorRiscoCodigo.IND_DESNUTRICAO_GRAVE, IndicadorRiscoCodigo.IND_DROGADICAO, IndicadorRiscoCodigo.IND_ACAMADO] }
+  ],
+  'fam-coxim-002': [
+    { data: '2026-09-15T09:15:00.000Z', indicadores: [IndicadorRiscoCodigo.IND_DESEMPREGO, IndicadorRiscoCodigo.IND_DROGADICAO, IndicadorRiscoCodigo.IND_HIPERTENSAO] }
+  ],
+  'fam-corumba-003': [
+    { data: '2026-09-10T11:00:00.000Z', indicadores: [IndicadorRiscoCodigo.IND_HIPERTENSAO, IndicadorRiscoCodigo.IND_DIABETES, IndicadorRiscoCodigo.IND_MAIOR_70_ANOS] }
+  ],
+  'fam-corumba-004': [
+    { data: '2026-08-20T16:00:00.000Z', indicadores: [] }
+  ]
+}
+
+let sequencialAvaliacao = 0
+const novoIdAvaliacao = () => `aval-demo-${String(++sequencialAvaliacao).padStart(4, '0')}`
+
+function paraEntradaAnterior(doc: AvaliacaoRiscoDoc | undefined): AvaliacaoAnteriorEntrada | undefined {
+  if (!doc) return undefined
+  return {
+    id: doc.id,
+    data: doc.dataAvaliacao,
+    pontuacao: doc.pontuacaoTotal,
+    classificacao: doc.classificacao,
+    fatores: doc.fatoresDeterminantes
   }
 }
 
+/** Valida o resultado do motor e o transforma em documento de avaliação (append-only). */
+function registrarAvaliacao(
+  familia: FamiliaSemResumo,
+  resultado: ResultadoEstratificacaoRisco,
+  avaliadorNome: string
+): AvaliacaoRiscoDoc {
+  return {
+    ...montarDocumentoAvaliacao(resultado, {
+      familiaId: familia.id,
+      avaliadorNome,
+      territorio: { municipioId: familia.municipioId, equipeId: familia.equipeId, microareaId: familia.microareaId }
+    }),
+    id: novoIdAvaliacao()
+  }
+}
+
+/** O resumo da família é sempre derivado da última avaliação (mesma regra de firestore.rules). */
+function comResumo(familia: FamiliaSemResumo, ultima: AvaliacaoRiscoDoc | undefined): FamiliaDoc {
+  if (!ultima) {
+    return { ...familia, ultimaClassificacaoRisco: FaixaRisco.SEM_RISCO_R0, ultimaPontuacaoRisco: 0 }
+  }
+  return {
+    ...familia,
+    ultimaClassificacaoRisco: ultima.classificacao,
+    ultimaPontuacaoRisco: ultima.pontuacaoTotal,
+    dataUltimaAvaliacao: ultima.dataAvaliacao,
+    ultimaAvaliacaoId: ultima.id
+  }
+}
+
+function gerarHistoricoSintetico(): Record<string, AvaliacaoRiscoDoc[]> {
+  const historico: Record<string, AvaliacaoRiscoDoc[]> = {}
+  for (const familia of FAMILIAS_SINTETICAS) {
+    const avaliacoes: AvaliacaoRiscoDoc[] = []
+    for (const visita of VISITAS_SINTETICAS[familia.id] ?? []) {
+      const contexto: ContextoAvaliacao = {
+        dataAvaliacao: visita.data,
+        avaliadorId: AVALIADOR_DEMO.id,
+        avaliadorPerfil: AVALIADOR_DEMO.perfil
+      }
+      const resultado = calcularEstratificacaoRisco(
+        {
+          familiaId: familia.id,
+          indicadores: visita.indicadores.map(codigo => ({ codigo, ativo: true })),
+          avaliacaoAnterior: paraEntradaAnterior(avaliacoes.at(-1))
+        },
+        contexto
+      )
+      avaliacoes.push(registrarAvaliacao(familia, resultado, AVALIADOR_DEMO.nome))
+    }
+    historico[familia.id] = avaliacoes
+  }
+  return historico
+}
+
 export function useFamilias() {
-  const familias = ref<FamiliaDoc[]>([...FAMILIAS_INICIAIS_SINTETICAS])
-  const avaliacoesMap = ref<Record<string, ResultadoEstratificacaoRisco>>({ ...AVALIACOES_INICIAIS })
+  /** Histórico append-only de avaliações por família (mais antiga → mais recente). */
+  const historicoAvaliacoes = ref<Record<string, AvaliacaoRiscoDoc[]>>(gerarHistoricoSintetico())
+
+  const familias = computed<FamiliaDoc[]>(() =>
+    FAMILIAS_SINTETICAS.map(f => comResumo(f, historicoAvaliacoes.value[f.id]?.at(-1)))
+  )
 
   const filtroMunicipio = ref<string>('todos')
   const filtroFaixaRisco = ref<FaixaRisco | 'TODAS'>('TODAS')
   const termoBusca = ref<string>('')
 
-  // Família e avaliação selecionadas para exibição no Drawer Explicativo
-  const familiaSelecionada = ref<FamiliaDoc | null>(null)
-  const avaliacaoSelecionada = ref<ResultadoEstratificacaoRisco | null>(null)
-  const drawerAberto = ref<boolean>(false)
+  // Drawer explicativo
+  const familiaSelecionadaId = ref<string | null>(null)
+  const drawerAberto = ref(false)
 
-  // Família selecionada para preenchimento de nova avaliação
-  const familiaEmAvaliacao = ref<FamiliaDoc | null>(null)
-  const modalAvaliacaoAberto = ref<boolean>(false)
+  // Formulário de nova avaliação (referência própria: não depende do drawer)
+  const familiaEmAvaliacaoId = ref<string | null>(null)
+  const modalAvaliacaoAberto = ref(false)
 
-  // Contagem quantitativa por faixa de risco para o painel de métricas
+  const familiaSelecionada = computed(() => familias.value.find(f => f.id === familiaSelecionadaId.value) ?? null)
+  const familiaEmAvaliacao = computed(() => familias.value.find(f => f.id === familiaEmAvaliacaoId.value) ?? null)
+
+  const ultimaAvaliacao = (familiaId: string | null) =>
+    familiaId ? historicoAvaliacoes.value[familiaId]?.at(-1) ?? null : null
+
+  const avaliacaoSelecionada = computed(() => ultimaAvaliacao(familiaSelecionadaId.value))
+  const totalAvaliacoesSelecionada = computed(() =>
+    familiaSelecionadaId.value ? historicoAvaliacoes.value[familiaSelecionadaId.value]?.length ?? 0 : 0
+  )
+
+  /** Avaliação anterior entregue ao formulário, para o delta explicativo. */
+  const avaliacaoAnteriorParaForm = computed(() => paraEntradaAnterior(ultimaAvaliacao(familiaEmAvaliacaoId.value) ?? undefined))
+
+  /** Quem avalia e quando: fixado ao abrir o formulário (prévia e registro usam o mesmo). */
+  const contextoFormulario = ref<ContextoAvaliacao | null>(null)
+
+  const familiasDoMunicipio = computed(() =>
+    familias.value.filter(f => filtroMunicipio.value === 'todos' || f.municipioId === filtroMunicipio.value)
+  )
+
+  // Contagem por faixa respeitando o município selecionado (mesma base do total do painel)
   const contagemRisco = computed(() => {
     const contagem: Record<FaixaRisco, number> = {
       [FaixaRisco.SEM_RISCO_R0]: 0,
@@ -172,98 +195,81 @@ export function useFamilias() {
       [FaixaRisco.RISCO_MEDIO_R2]: 0,
       [FaixaRisco.RISCO_MAIOR_R3]: 0
     }
-
-    for (const fam of familias.value) {
-      contagem[fam.ultimaClassificacaoRisco] = (contagem[fam.ultimaClassificacaoRisco] || 0) + 1
+    for (const fam of familiasDoMunicipio.value) {
+      contagem[fam.ultimaClassificacaoRisco]++
     }
-
     return contagem
   })
 
-  // Lista filtrada
   const familiasFiltradas = computed(() => {
-    return familias.value.filter(fam => {
-      if (filtroMunicipio.value !== 'todos' && fam.municipioId !== filtroMunicipio.value) {
-        return false
-      }
+    const busca = termoBusca.value.trim().toLowerCase()
+    return familiasDoMunicipio.value.filter(fam => {
       if (filtroFaixaRisco.value !== 'TODAS' && fam.ultimaClassificacaoRisco !== filtroFaixaRisco.value) {
         return false
       }
-      if (termoBusca.value.trim() !== '') {
-        const busca = termoBusca.value.toLowerCase()
-        const bateNome = fam.responsavelNome.toLowerCase().includes(busca)
-        const bateProntuario = fam.prontuarioFamiliar.toLowerCase().includes(busca)
-        if (!bateNome && !bateProntuario) return false
+      if (busca) {
+        return fam.responsavelNome.toLowerCase().includes(busca)
+          || fam.prontuarioFamiliar.toLowerCase().includes(busca)
       }
       return true
     })
   })
 
   function abrirDrawerExplicativo(familia: FamiliaDoc) {
-    familiaSelecionada.value = familia
-    avaliacaoSelecionada.value = avaliacoesMap.value[familia.id] || null
+    familiaSelecionadaId.value = familia.id
     drawerAberto.value = true
   }
 
   function fecharDrawer() {
     drawerAberto.value = false
-    familiaSelecionada.value = null
-    avaliacaoSelecionada.value = null
+    familiaSelecionadaId.value = null
   }
 
   function iniciarNovaAvaliacao(familia: FamiliaDoc) {
-    familiaEmAvaliacao.value = familia
-    modalAvaliacaoAberto.value = true
-    if (drawerAberto.value) {
-      fecharDrawer()
+    familiaEmAvaliacaoId.value = familia.id
+    contextoFormulario.value = {
+      dataAvaliacao: new Date().toISOString(),
+      avaliadorId: AVALIADOR_DEMO.id,
+      avaliadorPerfil: AVALIADOR_DEMO.perfil
     }
+    modalAvaliacaoAberto.value = true
+    fecharDrawer()
   }
 
   function fecharModalAvaliacao() {
     modalAvaliacaoAberto.value = false
-    familiaEmAvaliacao.value = null
+    familiaEmAvaliacaoId.value = null
+    contextoFormulario.value = null
   }
 
   function salvarNovaAvaliacao(resultado: ResultadoEstratificacaoRisco) {
-    if (!familiaEmAvaliacao.value) return
+    const familia = FAMILIAS_SINTETICAS.find(f => f.id === familiaEmAvaliacaoId.value)
+    if (!familia) return
 
-    const famId = familiaEmAvaliacao.value.id
-
-    // 1. Gravar a avaliação (registro imutável)
-    avaliacoesMap.value[famId] = resultado
-
-    // 2. Atualizar o resumo na família
-    const idx = familias.value.findIndex(f => f.id === famId)
-    if (idx !== -1) {
-      familias.value[idx] = {
-        ...familias.value[idx],
-        ultimaClassificacaoRisco: resultado.classificacao,
-        ultimaPontuacaoRisco: resultado.pontuacaoTotal,
-        dataUltimaAvaliacao: resultado.dataAvaliacao
-      }
-    }
+    // Append-only: nunca sobrescreve a avaliação anterior.
+    const doc = registrarAvaliacao(familia, resultado, AVALIADOR_DEMO.nome)
+    historicoAvaliacoes.value[familia.id] = [...(historicoAvaliacoes.value[familia.id] ?? []), doc]
 
     fecharModalAvaliacao()
-
-    // Abre o drawer para conferir o resultado e delta
-    const famAtualizada = familias.value.find(f => f.id === famId)
-    if (famAtualizada) {
-      abrirDrawerExplicativo(famAtualizada)
-    }
+    abrirDrawerExplicativo(comResumo(familia, doc))
   }
 
   return {
     familias,
     familiasFiltradas,
     contagemRisco,
+    totalFamiliasMunicipio: computed(() => familiasDoMunicipio.value.length),
     filtroMunicipio,
     filtroFaixaRisco,
     termoBusca,
     familiaSelecionada,
     avaliacaoSelecionada,
+    totalAvaliacoesSelecionada,
     drawerAberto,
     familiaEmAvaliacao,
+    avaliacaoAnteriorParaForm,
     modalAvaliacaoAberto,
+    contextoFormulario,
     abrirDrawerExplicativo,
     fecharDrawer,
     iniciarNovaAvaliacao,

@@ -1,16 +1,22 @@
 <script setup lang="ts">
 import { useFamilias } from '~/composables/useFamilias'
+import { estiloFaixa, FAIXAS_POR_PRIORIDADE } from '~/utils/estiloFaixaRisco'
+import { ICONES } from '~/utils/icones'
 
 const {
   familiasFiltradas,
   contagemRisco,
+  totalFamiliasMunicipio,
   filtroMunicipio,
   filtroFaixaRisco,
   termoBusca,
   familiaSelecionada,
   avaliacaoSelecionada,
+  totalAvaliacoesSelecionada,
   drawerAberto,
   familiaEmAvaliacao,
+  avaliacaoAnteriorParaForm,
+  contextoFormulario,
   modalAvaliacaoAberto,
   abrirDrawerExplicativo,
   fecharDrawer,
@@ -28,8 +34,8 @@ const {
         
         <!-- Logo e Nome do Sistema -->
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-md">
-            <Icon name="lucide:shield-alert" class="w-6 h-6 text-white" />
+          <div class="w-10 h-10 rounded-xl bg-blue-700 flex items-center justify-center shadow-md">
+            <Icon :name="ICONES.app" class="w-7 h-7 text-white" aria-hidden="true" />
           </div>
           <div>
             <div class="flex items-center gap-2">
@@ -49,9 +55,10 @@ const {
         <!-- Seletor Territorial & Selo de Segurança LGPD -->
         <div class="flex items-center gap-4">
           <div class="flex items-center gap-2 text-xs bg-slate-800/90 border border-slate-700 px-3 py-1.5 rounded-xl">
-            <Icon name="lucide:building-2" class="w-4 h-4 text-blue-400" />
+            <Icon :name="ICONES.municipio" class="w-4 h-4 text-blue-300" aria-hidden="true" />
             <select
               v-model="filtroMunicipio"
+              aria-label="Filtrar por município"
               class="bg-transparent text-white font-medium focus:outline-none cursor-pointer"
             >
               <option value="todos" class="bg-slate-900 text-white">Todos os Municípios (Piloto)</option>
@@ -61,7 +68,7 @@ const {
           </div>
 
           <div class="hidden md:flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-3 py-1.5 rounded-xl font-medium">
-            <Icon name="lucide:lock" class="w-3.5 h-3.5" />
+            <Icon :name="ICONES.lgpd" class="w-4 h-4" aria-hidden="true" />
             <span>LGPD: Dados Sintéticos de Teste</span>
           </div>
         </div>
@@ -93,7 +100,7 @@ const {
       <!-- Cards de Métricas Quantitativas por Faixa de Risco -->
       <PainelMetricasRisco
         :contagem-risco="contagemRisco"
-        :total-familias="familiasFiltradas.length"
+        :total-familias="totalFamiliasMunicipio"
         :filtro-ativo="filtroFaixaRisco"
         @selecionar-filtro="faixa => filtroFaixaRisco = faixa"
       />
@@ -103,10 +110,11 @@ const {
         
         <!-- Campo de Pesquisa -->
         <div class="relative flex-1">
-          <Icon name="lucide:search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Icon :name="ICONES.buscar" class="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
           <input
             v-model="termoBusca"
-            type="text"
+            type="search"
+            aria-label="Buscar família"
             placeholder="Buscar por nome do responsável ou número de prontuário (ex: CX-1042)..."
             class="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all"
           />
@@ -115,14 +123,14 @@ const {
         <!-- Filtros Rápidos de Faixa de Risco -->
         <div class="flex items-center gap-2 shrink-0 overflow-x-auto pb-1 md:pb-0">
           <span class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-            <Icon name="lucide:filter" class="w-3.5 h-3.5" />
+            <Icon :name="ICONES.filtro" class="w-3.5 h-3.5" aria-hidden="true" />
             Filtrar:
           </span>
 
           <button
             type="button"
             :class="[
-              'px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer',
+              'px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer',
               filtroFaixaRisco === 'TODAS'
                 ? 'bg-slate-900 text-white shadow-sm'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -132,52 +140,18 @@ const {
             Todas
           </button>
           <button
+            v-for="faixa in FAIXAS_POR_PRIORIDADE"
+            :key="faixa"
             type="button"
+            :aria-pressed="filtroFaixaRisco === faixa"
             :class="[
-              'px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer',
-              filtroFaixaRisco === 'RISCO_MAIOR_R3'
-                ? 'bg-red-700 text-white shadow-sm'
-                : 'bg-red-50 text-red-900 border border-red-200 hover:bg-red-100'
+              'px-3 py-2 text-xs font-semibold rounded-lg border inline-flex items-center gap-1 cursor-pointer whitespace-nowrap',
+              filtroFaixaRisco === faixa ? estiloFaixa(faixa).solido + ' border-transparent' : estiloFaixa(faixa).suave
             ]"
-            @click="filtroFaixaRisco = 'RISCO_MAIOR_R3'"
+            @click="filtroFaixaRisco = faixa"
           >
-            R3 (Máximo)
-          </button>
-          <button
-            type="button"
-            :class="[
-              'px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer',
-              filtroFaixaRisco === 'RISCO_MEDIO_R2'
-                ? 'bg-orange-600 text-white shadow-sm'
-                : 'bg-orange-50 text-orange-950 border border-orange-200 hover:bg-orange-100'
-            ]"
-            @click="filtroFaixaRisco = 'RISCO_MEDIO_R2'"
-          >
-            R2 (Médio)
-          </button>
-          <button
-            type="button"
-            :class="[
-              'px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer',
-              filtroFaixaRisco === 'RISCO_MENOR_R1'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
-            ]"
-            @click="filtroFaixaRisco = 'RISCO_MENOR_R1'"
-          >
-            R1 (Menor)
-          </button>
-          <button
-            type="button"
-            :class="[
-              'px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer',
-              filtroFaixaRisco === 'SEM_RISCO_R0'
-                ? 'bg-emerald-700 text-white shadow-sm'
-                : 'bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100'
-            ]"
-            @click="filtroFaixaRisco = 'SEM_RISCO_R0'"
-          >
-            R0 (Sem Risco)
+            <Icon :name="estiloFaixa(faixa).icone" class="w-4 h-4" aria-hidden="true" />
+            {{ estiloFaixa(faixa).sigla }} ({{ estiloFaixa(faixa).rotulo }})
           </button>
         </div>
 
@@ -232,7 +206,7 @@ const {
                 <!-- Quantidade de Membros -->
                 <td class="py-4 px-6">
                   <span class="inline-flex items-center gap-1 text-slate-700 font-semibold text-xs">
-                    <Icon name="lucide:users" class="w-3.5 h-3.5 text-slate-400" />
+                    <Icon :name="ICONES.familia" class="w-4 h-4 text-slate-500" aria-hidden="true" />
                     {{ fam.quantidadeMembros }} moradores
                   </span>
                 </td>
@@ -247,7 +221,7 @@ const {
                     @click="abrirDrawerExplicativo(fam)"
                   />
                   <div v-if="fam.dataUltimaAvaliacao" class="text-[11px] text-slate-400 mt-1">
-                    Última visita: {{ new Date(fam.dataUltimaAvaliacao).toLocaleDateString('pt-BR') }}
+                    Última avaliação: {{ new Date(fam.dataUltimaAvaliacao).toLocaleDateString('pt-BR') }}
                   </div>
                 </td>
 
@@ -255,7 +229,7 @@ const {
                 <td class="py-4 px-6 text-right space-x-2">
                   <button
                     type="button"
-                    class="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                    class="px-3 py-2 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                     title="Inspecionar fatores de risco"
                     @click="abrirDrawerExplicativo(fam)"
                   >
@@ -263,7 +237,7 @@ const {
                   </button>
                   <button
                     type="button"
-                    class="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm cursor-pointer"
+                    class="px-3 py-2 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors shadow-sm cursor-pointer"
                     title="Realizar nova avaliação de risco com cálculo em tempo real"
                     @click="iniciarNovaAvaliacao(fam)"
                   >
@@ -280,7 +254,7 @@ const {
           v-if="familiasFiltradas.length === 0"
           class="p-12 text-center text-slate-500 space-y-2"
         >
-          <Icon name="lucide:circle-help" class="w-8 h-8 text-slate-400 mx-auto" />
+          <Icon :name="ICONES.vazio" class="w-8 h-8 text-slate-400 mx-auto" aria-hidden="true" />
           <p class="font-bold text-slate-700 text-base">Nenhuma família encontrada para os filtros selecionados.</p>
           <p class="text-xs text-slate-500">Tente ajustar o termo de busca ou selecionar outra faixa de risco.</p>
         </div>
@@ -305,6 +279,7 @@ const {
     <DrawerExplicativoRisco
       :aberto="drawerAberto"
       :avaliacao="avaliacaoSelecionada"
+      :total-avaliacoes="totalAvaliacoesSelecionada"
       :nome-familia="familiaSelecionada?.responsavelNome"
       :prontuario="familiaSelecionada?.prontuarioFamiliar"
       @fechar="fecharDrawer"
@@ -313,7 +288,7 @@ const {
 
     <!-- Modal de Nova Estratificação com Cálculo em Tempo Real -->
     <div
-      v-if="modalAvaliacaoAberto && familiaEmAvaliacao"
+      v-if="modalAvaliacaoAberto && familiaEmAvaliacao && contextoFormulario"
       class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm p-4 sm:p-6 md:p-10 flex items-center justify-center"
     >
       <div class="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl">
@@ -321,7 +296,8 @@ const {
           :familia-id="familiaEmAvaliacao.id"
           :nome-familia="familiaEmAvaliacao.responsavelNome"
           :prontuario="familiaEmAvaliacao.prontuarioFamiliar"
-          :avaliacao-anterior="avaliacaoSelecionada"
+          :avaliacao-anterior="avaliacaoAnteriorParaForm"
+          :contexto="contextoFormulario"
           @salvar="salvarNovaAvaliacao"
           @cancelar="fecharModalAvaliacao"
         />

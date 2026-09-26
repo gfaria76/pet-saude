@@ -12,7 +12,7 @@ shared/domain/                  ← DOMÍNIO — TypeScript puro, sem Vue nem Fi
     types.ts                    enums e contratos (FaixaRisco, IndicadorRiscoCodigo…)
     constants.ts                escala versionada (pesos, cortes, metadados)
     calculadora.ts              motor determinístico calcularEstratificacaoRisco()
-  schemas/index.ts              schemas Zod = contrato de persistência
+  schemas/index.ts              schemas Zod = contrato de persistência; montarDocumentoAvaliacao()
 
 app/                            ← INTERFACE (Nuxt 4 / Vue 3.5)
   components/                   só apresentação; nenhum peso ou regra de cálculo
@@ -42,12 +42,12 @@ tests/rules/                    Vitest + Firestore Emulator — regras de acesso
 ## 2. Motor de estratificação
 
 ```ts
-calcularEstratificacaoRisco(entrada, configuracao, contexto): ResultadoEstratificacaoRisco
+calcularEstratificacaoRisco(entrada, contexto, configuracao = CONFIGURACAO_COELHO_SAVASSI_V1): ResultadoEstratificacaoRisco
 ```
 
 - `entrada`: família e indicadores presentes (com `individuoId` opcional) e a avaliação anterior, se houver.
-- `configuracao`: versão da escala (`ConfiguracaoEscalaRisco`), com pesos por indicador (`number` ou `null` = não pontuado), limites de corte e gatilhos diretos.
 - `contexto`: `{ dataAvaliacao, avaliadorId, avaliadorPerfil }`, **injetado** para o cálculo ser determinístico e auditável.
+- `configuracao`: versão da escala (`ConfiguracaoEscalaRisco`), com pesos por indicador (`number` ou `null` = não pontuado), limites de corte e gatilhos diretos.
 - Saída: pontuação, faixa, regra de decisão em texto, fatores determinantes, indicadores não pontuados, delta e autoria.
 
 Regras detalhadas em [`business_rules.md`](./business_rules.md).
@@ -72,7 +72,7 @@ sequenceDiagram
     UI->>M: calcula prévia em tempo real (entrada, escala, contexto)
     ACS->>UI: Salvar
     UI->>C: salvarNovaAvaliacao(resultado)
-    C->>Z: valida documento (soma dos fatores == total)
+    C->>Z: montarDocumentoAvaliacao() valida (soma dos fatores == total)
     C->>R: add avaliacoes_risco + log de auditoria
     R->>F: create (update/delete negados)
     C->>C: acrescenta ao histórico e atualiza resumo da família

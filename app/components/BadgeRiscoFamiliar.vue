@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { FaixaRisco, ROTULOS_FAIXA_RISCO } from '~~/shared/domain/risk-engine'
+import type { FaixaRisco } from '~~/shared/domain/risk-engine'
+import { estiloFaixa } from '~/utils/estiloFaixaRisco'
 
 const props = withDefaults(
   defineProps<{
@@ -20,46 +21,7 @@ const emit = defineEmits<{
   (e: 'click'): void
 }>()
 
-const infoFaixa = computed(() => ROTULOS_FAIXA_RISCO[props.classificacao] || {
-  rotulo: 'Não avaliado',
-  sigla: 'N/A',
-  acaoRecomendada: ''
-})
-
-const estiloConfig = computed(() => {
-  switch (props.classificacao) {
-    case FaixaRisco.SEM_RISCO_R0:
-      return {
-        bg: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100',
-        badge: 'bg-emerald-700 text-white',
-        icon: 'lucide:check-circle-2'
-      }
-    case FaixaRisco.RISCO_MENOR_R1:
-      return {
-        bg: 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100',
-        badge: 'bg-amber-600 text-white',
-        icon: 'lucide:info'
-      }
-    case FaixaRisco.RISCO_MEDIO_R2:
-      return {
-        bg: 'bg-orange-50 text-orange-950 border-orange-200 hover:bg-orange-100',
-        badge: 'bg-orange-600 text-white',
-        icon: 'lucide:triangle-alert'
-      }
-    case FaixaRisco.RISCO_MAIOR_R3:
-      return {
-        bg: 'bg-red-50 text-red-950 border-red-300 hover:bg-red-100 font-semibold',
-        badge: 'bg-red-700 text-white',
-        icon: 'lucide:octagon-alert'
-      }
-    default:
-      return {
-        bg: 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100',
-        badge: 'bg-gray-500 text-white',
-        icon: 'lucide:info'
-      }
-  }
-})
+const estilo = computed(() => estiloFaixa(props.classificacao))
 
 const tamanhoClasses = computed(() => {
   switch (props.tamanho) {
@@ -72,37 +34,39 @@ const tamanhoClasses = computed(() => {
       return 'text-xs md:text-sm px-2.5 py-1 gap-1.5'
   }
 })
+
+const descricaoAcessivel = computed(() => {
+  const pontos = props.pontuacao !== undefined ? `, ${props.pontuacao} pontos` : ''
+  const acao = props.interativo ? '. Abrir explicação detalhada' : ''
+  return `${estilo.value.rotulo} (${estilo.value.sigla})${pontos}${acao}`
+})
 </script>
 
 <template>
-  <button
-    type="button"
-    :disabled="!interativo"
+  <component
+    :is="interativo ? 'button' : 'span'"
+    :type="interativo ? 'button' : undefined"
     :class="[
-      'inline-flex items-center rounded-full border transition-all shadow-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-600',
+      'inline-flex items-center rounded-full border shadow-sm font-medium',
       tamanhoClasses,
-      estiloConfig.bg,
-      interativo ? 'cursor-pointer hover:shadow' : 'cursor-default'
+      estilo.suave,
+      interativo
+        ? 'cursor-pointer hover:shadow transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-blue-700 min-h-[44px] md:min-h-0'
+        : 'cursor-default'
     ]"
-    :title="`${infoFaixa.rotulo} - ${infoFaixa.acaoRecomendada}. Clique para ver explicação detalhada.`"
+    :aria-label="descricaoAcessivel"
+    :title="`${estilo.rotulo} — ${estilo.acaoRecomendada}`"
     @click="interativo && emit('click')"
   >
-    <!-- Ícone semântico via @nuxt/icon oficial (acessibilidade para daltônicos) -->
-    <Icon
-      :name="estiloConfig.icon"
-      class="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0"
-      aria-hidden="true"
-    />
-
-    <!-- Rótulo textual obrigatório (nunca depender apenas de cor) -->
-    <span class="tracking-tight">{{ infoFaixa.sigla }} — {{ infoFaixa.rotulo }}</span>
-
-    <!-- Pontuação consolidada quando fornecida -->
+    <!-- Cor + ícone + texto: nunca depender só da cor -->
+    <Icon :name="estilo.icone" class="w-4 h-4 md:w-5 md:h-5 shrink-0" aria-hidden="true" />
+    <span class="tracking-tight">{{ estilo.sigla }} — {{ estilo.rotulo }}</span>
     <span
       v-if="pontuacao !== undefined"
-      :class="['ml-0.5 px-1.5 py-0.2 rounded-full text-xs font-bold', estiloConfig.badge]"
+      :class="['ml-0.5 px-1.5 rounded-full text-xs font-bold', estilo.solido]"
+      aria-hidden="true"
     >
       {{ pontuacao }} pts
     </span>
-  </button>
+  </component>
 </template>
