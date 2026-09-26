@@ -1,79 +1,100 @@
 # Modelo de Domínio — PET-Saúde
 
-Este documento define o modelo conceitual de entidades e invariantes de domínio do sistema de estratificação de risco na Atenção Primária à Saúde.
+Modelo conceitual das entidades e invariantes do sistema de estratificação de risco na APS. A implementação de referência está em `shared/domain/schemas/index.ts` (Zod) e `firestore.rules` (acesso e persistência).
 
 ---
 
-## 1. Visão Geral das Entidades e Relacionamentos
+## 1. Entidades e relacionamentos
 
 ```mermaid
 erDiagram
     MUNICIPIO ||--o{ UNIDADE_BASICA_SAUDE : contem
     UNIDADE_BASICA_SAUDE ||--o{ EQUIPE_SAUDE_FAMILIA : sedia
     EQUIPE_SAUDE_FAMILIA ||--o{ MICROAREA : abrange
+    PROFISSIONAL_ACS ||--o{ MICROAREA : responsavel_por
     MICROAREA ||--o{ DOMICILIO : localiza
     DOMICILIO ||--o{ FAMILIA : abriga
     FAMILIA ||--|{ INDIVIDUO : composta_por
-    FAMILIA ||--o{ AVALIACAO_RISCO : possui
-    AVALIACAO_RISCO ||--|{ ITEM_AVALIACAO : detalha
-    AVALIACAO_RISCO ||--|| CLASSIFICACAO_RISCO : resulta_em
-    AVALIACAO_RISCO }|--|| ESCALA_CONFIGURACAO : baseada_em
+    FAMILIA ||--o{ AVALIACAO_RISCO : historico
+    AVALIACAO_RISCO ||--o{ FATOR_DETERMINANTE : detalha
+    AVALIACAO_RISCO }o--|| ESCALA_CONFIGURACAO : versao
+    AVALIACAO_RISCO |o--o| AVALIACAO_RISCO : anterior
     FAMILIA ||--o{ LOG_AUDITORIA : gera
     AVALIACAO_RISCO ||--o{ LOG_AUDITORIA : gera
 ```
 
+### 1.1. Campos territoriais denormalizados
+
+`Domicilio`, `Familia`, `Individuo` e `AvaliacaoRisco` carregam **`municipioId`, `equipeId` e `microareaId`**. Isso permite que `firestore.rules` verifique o território de cada documento sem consultas extras, e que as listagens filtrem pelo território do profissional. Os três campos só mudam em uma transferência territorial, feita pela coordenação (ver invariante 3).
+
 ---
 
-## 2. Dicionário de Entidades
+## 2. Dicionário de entidades
 
 ### 2.1. `UnidadeBasicaSaude` (UBS)
-Representa o estabelecimento de saúde do SUS onde as equipes estão alocadas.
-- **Identificadores**: ID único, Código CNES (Cadastro Nacional de Estabelecimentos de Saúde), Nome da UBS, Município (e.g., Coxim ou Corumbá).
+
+Estabelecimento do SUS onde as equipes estão alocadas. Identificadores: ID, código CNES, nome, município (Coxim ou Corumbá).
 
 ### 2.2. `EquipeSaudeFamilia` (eSF)
-Equipe multiprofissional (médico, enfermeiro, técnico de enfermagem, cirurgião-dentista, agentes comunitários de saúde) responsável por um território adscrito.
-- **Identificadores**: ID único, Código INE (Identificador Nacional de Equipe), Nome da Equipe, UBS de referência.
 
-### 2.3. `Microarea`
-Subdivisão territorial sob responsabilidade direta de um Agente Comunitário de Saúde (ACS).
-- **Atributos**: Número da microárea (ex.: Microárea 01), descrição geográfica, ACS responsável.
+Equipe multiprofissional (medicina, enfermagem, técnico de enfermagem, odontologia, ACS) com território adscrito. Identificadores: ID, código INE, nome, UBS de referência.
 
-### 2.4. `Domicilio`
-A edificação física e suas características ambientais e de infraestrutura.
-- **Atributos**: Endereço completo, tipo de habitação, abastecimento de água, esgotamento sanitário, destino do lixo, número de cômodos.
+### 2.3. `Microarea` — schema `MicroareaSchema`
 
-### 2.5. `Familia`
-O núcleo familiar coabitante em determinado domicílio.
-- **Atributos**: Número do Prontuário Familiar, data de cadastro, status (Ativa, Mudou-se, Desmembrada), identificação do Responsável Familiar.
-- **Invariante**: Uma família deve ter exatamente 1 indivíduo designado como Responsável Familiar ativo.
+Subdivisão territorial sob responsabilidade de um ACS.
 
-### 2.6. `Individuo`
-Pessoa física pertencente a uma família.
-- **Atributos**: Nome social / civil, Cartão Nacional de Saúde (CNS), CPF (quando disponível), data de nascimento, sexo, relação de parentesco com o responsável familiar, marcadores clínicos (hipertensão, diabetes, deficiências, acamado).
+- **Atributos:** `id`, `numero`, `descricao` (opcional), `acsId` (opcional), `equipeId`, `municipioId`.
 
-### 2.7. `AvaliacaoRisco`
-Registro histórico e imutável de uma estratificação de risco realizada para uma família.
-- **Atributos**: ID, ID da Família, data e hora da avaliação, profissional avaliador, versão da escala utilizada, pontuação total calculada, faixa de risco consolidada, lista de itens/indicadores identificados com suas pontuações individuais.
+### 2.4. `Domicilio` — schema `DomicilioSchema`
 
-### 2.8. `LogAuditoria`
-Registro imutável e somente-inserção (`append-only`) de toda operação de criação, alteração ou exclusão lógica sobre `Familia`, `Individuo`, `Domicilio` ou `AvaliacaoRisco`, conforme exigido em [`context/security_privacy.md`](./security_privacy.md).
-- **Atributos**: ID, identificador do usuário operador (`usuarioId`), perfil do operador (ACS, Enfermeiro, Médico, Coordenador APS, Admin), ação executada, identificador anônimo do recurso afetado, timestamp em ISO 8601 com timezone, justificativa (quando aplicável).
-- **Invariante**: Nunca deve conter CPF, CNS, nome ou condição de saúde — apenas identificadores anônimos/hasheados.
+Edificação e suas condições de infraestrutura.
+
+- **Atributos:** endereço (`logradouro`, `numero`, `bairro`, `cep` opcional), território, `quantidadeComodos`, `quantidadeMoradores`, abastecimento de água, esgotamento sanitário, destino do lixo, `saneamentoInadequado`, `adensamentoExcessivo`.
+
+### 2.5. `Familia` — schema `FamiliaSchema`
+
+Núcleo familiar coabitante no domicílio.
+
+- **Atributos:** `prontuarioFamiliar`, `domicilioId`, território, `responsavelNome`, `responsavelId`, `contato` (opcional — previsto no Relatório Técnico), `status` (`ATIVA`, `MUDOU_SE`, `DESMEMBRADA`), `quantidadeMembros`, resumo da última avaliação (`ultimaClassificacaoRisco`, `ultimaPontuacaoRisco`, `dataUltimaAvaliacao`).
+- **Invariante:** exatamente um Responsável Familiar ativo.
+- O resumo da última avaliação é uma **cópia de conveniência** para o painel; a fonte da verdade é o histórico em `AvaliacaoRisco`.
+
+### 2.6. `Individuo` — schema `IndividuoSchema`
+
+Pessoa que compõe a família.
+
+- **Atributos:** `nome`, `familiaId`, território, `dataNascimento`, `sexo`, `parentesco`, `cns` e `cpf` (**opcionais** — o Relatório Técnico não os exige; minimização LGPD), marcadores clínicos (`condicoesCronicas`).
+
+### 2.7. `AvaliacaoRisco` — schema `AvaliacaoRiscoSchema`
+
+Registro **imutável** de uma estratificação.
+
+- **Atributos:** `familiaId`, território, `avaliadorId`, `avaliadorNome`, `avaliadorPerfil`, `dataAvaliacao`, `versaoEscala`, `pontuacaoTotal`, `classificacao`, `regraDecisao`, `fatoresDeterminantes` (cada um com código, descrição, pontos, tipo de sentinela e `individuoId` opcional), `indicadoresNaoPontuados` (opcional), `comparativoAvaliacaoAnterior` (delta, opcional).
+- Persistido com `registradoEm` = horário do servidor.
+- O **nome** do membro afetado não é gravado na avaliação; a interface resolve pelo `individuoId` quando o profissional tem acesso ao prontuário.
+
+### 2.8. `LogAuditoria` — schema `LogAuditoriaSchema`
+
+Registro **append-only** de criação, alteração ou exclusão lógica de `Familia`, `Individuo`, `Domicilio`, `Microarea` ou `AvaliacaoRisco`, conforme [`security_privacy.md`](./security_privacy.md).
+
+- **Atributos:** `usuarioId`, `perfil`, `municipioId`, `acao`, `recursoTipo`, `recursoId` (anônimo/hasheado), `dataHora` (ISO 8601 com fuso), `justificativa` (opcional).
+- **Invariante:** nunca contém nome, CPF, CNS ou condição de saúde.
 
 ---
 
-## 3. Invariantes do Domínio
+## 3. Invariantes do domínio
 
-1. **Imutabilidade de Avaliações**: Uma instância de `AvaliacaoRisco` nunca deve ser atualizada (`UPDATE`). Caso haja retificação de dados da família, uma nova avaliação deve ser calculada e registrada com referência à avaliação anterior.
-2. **Explicabilidade Obrigatória**: Uma `AvaliacaoRisco` é inválida se a soma das pontuações de seus `ItemAvaliacao` não for estritamente igual à `pontuacaoTotal`.
-3. **Isolamento Territorial**: Famílias e domicílios pertencem estritamente a uma microárea e a uma equipe eSF por vez. Transferências territoriais devem ser registradas com histórico.
-4. **Auditoria Append-Only**: Toda criação, alteração ou exclusão lógica de `Familia`, `Individuo`, `Domicilio` ou `AvaliacaoRisco` deve gerar um `LogAuditoria` correspondente. Um `LogAuditoria` nunca é atualizado ou apagado (ver regras de acesso em `firestore.rules`).
+1. **Imutabilidade das avaliações:** `AvaliacaoRisco` nunca sofre update nem delete. Retificação ⇒ nova avaliação, que referencia a anterior no delta.
+2. **Explicabilidade:** uma `AvaliacaoRisco` é inválida se a soma dos pontos de `fatoresDeterminantes` for diferente de `pontuacaoTotal` (validado pelo `.refine` do Zod; as regras do Firestore não conseguem iterar listas, por isso a revalidação no servidor está planejada em `functions/`).
+3. **Isolamento territorial:** família e domicílio pertencem a uma microárea e a uma equipe por vez. Transferência só pela coordenação, com registro em `LogAuditoria`.
+4. **Auditoria append-only:** toda criação, alteração ou exclusão lógica gera um `LogAuditoria`, que nunca é atualizado ou apagado.
+5. **Sem exclusão física:** famílias, domicílios e indivíduos são inativados por `status`, nunca apagados.
 
 ---
 
-## 4. Documentação Relacionada
+## 4. Documentação relacionada
 
-- Regras de pontuação e faixas de corte da `AvaliacaoRisco`: [`context/business_rules.md`](./business_rules.md)
-- Regras de proteção de dados e auditoria de `Individuo` e `LogAuditoria`: [`context/security_privacy.md`](./security_privacy.md)
-- Apresentação visual de `ClassificacaoRisco`: [`context/ui_guidelines.md`](./ui_guidelines.md)
-- Implementação de referência: `shared/domain/schemas/index.ts` (validação Zod) e `firestore.rules` (RBAC e regras de persistência).
+- Pontuação e faixas: [`business_rules.md`](./business_rules.md)
+- Camadas e fluxo da avaliação: [`architecture.md`](./architecture.md)
+- Proteção de dados e RBAC: [`security_privacy.md`](./security_privacy.md)
+- Apresentação da classificação: [`ui_guidelines.md`](./ui_guidelines.md)

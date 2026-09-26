@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm test)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm test:rules)",
+      "Bash(pnpm build)",
+      "Bash(pnpm dev)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)"
+    ],
+    "deny": [
+      "Bash(firebase deploy *)",
+      "Read(./.env)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r \".tool_input.file_path // .tool_response.filePath // empty\"); case \"$f\" in */shared/domain/*) out=$(cd \"$CLAUDE_PROJECT_DIR\" && pnpm test 2>&1) || { echo \"$out\" | tail -40 >&2; exit 2; } ;; esac",
+            "timeout": 120,
+            "statusMessage": "Rodando testes do domínio..."
+          }
+        ]
+      }
+    ]
+  }
+}
