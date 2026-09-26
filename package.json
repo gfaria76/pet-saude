@@ -1,0 +1,27 @@
+{
+  "name": "pet-saude",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev --host",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nuxt/fonts": "0.14.0",
+    "@nuxt/icon": "2.5.1",
+    "firebase": "^12.19.0",
+    "nuxt": "^4.5.2",
+    "vuefire": "^3.2.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "^1.2.136",
+    "@nuxtjs/tailwindcss": "^6.14.0",
+    "nuxt-qrcode": "^0.4.10",
+    "vitest": "^5.0.1"
+  }
+}
