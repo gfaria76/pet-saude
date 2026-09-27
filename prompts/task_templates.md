@@ -1,12 +1,12 @@
 # Templates de Tarefas Recorrentes
 
-Os templates foram convertidos em **skills** em `.claude/skills/`. O Claude Code as usa automaticamente; outros assistentes (Gemini, Codex, Copilot) podem ler os arquivos `SKILL.md` como instruções em Markdown.
+Os templates foram convertidos em **skills** em `.agents/skills/` (pasta única; `.claude/skills` é um link simbólico para ela). Claude Code, Codex e Gemini/Antigravity as descobrem automaticamente; outros assistentes (Copilot) podem ler os arquivos `SKILL.md` como instruções em Markdown.
 
 | Tarefa | Arquivo |
 | :--- | :--- |
-| Implementar/ajustar indicador, peso ou faixa no motor de risco | [`.claude/skills/nova-regra-risco/SKILL.md`](../.claude/skills/nova-regra-risco/SKILL.md) |
-| Testes unitários do motor e dos schemas | [`.claude/skills/testes-motor/SKILL.md`](../.claude/skills/testes-motor/SKILL.md) |
-| Componentes de visualização de risco (badge, drawer, form) | [`.claude/skills/componente-risco/SKILL.md`](../.claude/skills/componente-risco/SKILL.md) |
-| Auditoria de segurança e LGPD | [`.claude/skills/auditoria-lgpd/SKILL.md`](../.claude/skills/auditoria-lgpd/SKILL.md) |
+| Implementar/ajustar indicador, peso ou faixa no motor de risco | [`.agents/skills/nova-regra-risco/SKILL.md`](../.agents/skills/nova-regra-risco/SKILL.md) |
+| Testes unitários do motor e dos schemas | [`.agents/skills/testes-motor/SKILL.md`](../.agents/skills/testes-motor/SKILL.md) |
+| Componentes de visualização de risco (badge, drawer, form) | [`.agents/skills/componente-risco/SKILL.md`](../.agents/skills/componente-risco/SKILL.md) |
+| Auditoria de segurança e LGPD | [`.agents/skills/auditoria-lgpd/SKILL.md`](../.agents/skills/auditoria-lgpd/SKILL.md) |
 
 Edite as skills, não este arquivo.

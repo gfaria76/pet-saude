@@ -10,7 +10,7 @@ Territórios piloto: UBSs de **Coxim** e **Corumbá** (Mato Grosso do Sul).
 
 | Documento | Conteúdo |
 | :--- | :--- |
-| [`AGENTS.md`](./AGENTS.md) | Instruções para assistentes de IA (fonte única; `CLAUDE.md`, `GEMINI.md`, `CODEX.md` e Copilot apontam para ele) |
+| [`AGENTS.md`](./AGENTS.md) | Instruções para assistentes de IA (fonte única; `CLAUDE.md`, `GEMINI.md`, `CODEX.md` e `.github/copilot-instructions.md` são links simbólicos para ele) |
 | [`context/fontes/`](./context/fontes/) | Relatório Técnico de parâmetros (fonte primária dos indicadores) |
 | [`context/architecture.md`](./context/architecture.md) | Camadas, regra de dependência e fluxo da avaliação |
 | [`context/business_rules.md`](./context/business_rules.md) | Indicadores, pesos, faixas e pendências de validação |

@@ -1,6 +1,6 @@
 # AGENTS.md — Guia para Agentes de IA no PET-Saúde
 
-Fonte única de instruções para qualquer assistente de IA que trabalhe neste repositório (Claude Code, Gemini/Antigravity, Codex, Copilot). Os arquivos `CLAUDE.md`, `GEMINI.md`, `CODEX.md` e `.github/copilot-instructions.md` apenas apontam para cá. Edite **este** arquivo.
+Fonte única de instruções para qualquer assistente de IA que trabalhe neste repositório (Claude Code, Gemini/Antigravity, Codex, Copilot). `CLAUDE.md`, `GEMINI.md`, `CODEX.md` e `.github/copilot-instructions.md` são **links simbólicos** (`ln -s`) para este arquivo — o conteúdo é o mesmo byte a byte. Edite **este** arquivo; nunca substitua os links por cópias.
 
 **Projeto:** PET-Saúde — Estratificação de Risco Familiar na Atenção Primária (UFMS, UBSs de Coxim e Corumbá/MS).
 
@@ -27,7 +27,12 @@ pnpm test:rules       # testes das regras do Firestore no Emulator (exige Java +
 pnpm build            # build de produção
 ```
 
-Antes de concluir qualquer mudança em `shared/domain/` ou `firestore.rules`, rode `pnpm test` (e `pnpm test:rules` quando mexer nas regras).
+Antes de concluir qualquer mudança em `shared/domain/` ou `firestore.rules`, rode `pnpm test` (e `pnpm test:rules` quando mexer nas regras). No Claude Code, um hook em `.claude/settings.json` roda `pnpm test` automaticamente ao editar `shared/domain/`; se falhar, corrija antes de seguir.
+
+## Como trabalhar
+
+- **Skills do projeto** ficam em [`.agents/skills/`](./.agents/skills/) (`.claude/skills` é um link para essa pasta). Use `nova-regra-risco`, `testes-motor`, `componente-risco` e `auditoria-lgpd` nas tarefas recorrentes. Para regras do Firestore, use `firestore-rules-creation` e depois `firebase-security-rules-auditor`. Assistentes sem suporte a skills podem ler o `SKILL.md` de cada pasta como instrução em Markdown.
+- **Planos:** quando o usuário pedir um plano, entregue apenas o plano; implemente só quando ele pedir explicitamente.
 
 ## Papel esperado
 
