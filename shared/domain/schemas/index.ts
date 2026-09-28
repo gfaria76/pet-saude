@@ -86,7 +86,14 @@ export const MicroareaSchema = z.object({
   descricao: texto(0, 200).optional(),
   acsId: id.optional(),
   equipeId: texto(1, 64),
-  municipioId: texto(1, 64)
+  municipioId: texto(1, 64),
+  /**
+   * Centroide aproximado da microárea (não o endereço de um domicílio):
+   * minimização LGPD (security_privacy.md) — o mapa de calor nunca geolocaliza
+   * uma família individual.
+   */
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional()
 })
 
 export const DomicilioSchema = TerritorioSchema.extend({
@@ -120,6 +127,12 @@ export const FamiliaSchema = TerritorioSchema.extend({
   dataUltimaAvaliacao: dataHora.optional(),
   ultimaAvaliacaoId: id.optional()
 })
+
+/** Cadastros legados sem versão começam em zero; alterações canônicas incrementam a versão. */
+export const FamiliaVersionadaSchema = FamiliaSchema.extend({
+  versaoCadastro: z.number().int().nonnegative().default(0)
+})
+export type FamiliaVersionada = z.infer<typeof FamiliaVersionadaSchema>
 
 export const IndividuoSchema = TerritorioSchema.extend({
   id,
@@ -177,7 +190,9 @@ export function montarDocumentoAvaliacao(
   dados: { familiaId: string; avaliadorNome: string; territorio: z.infer<typeof TerritorioSchema> }
 ): AvaliacaoRiscoDoc {
   return AvaliacaoRiscoSchema.parse({
-    ...dados.territorio,
+    municipioId: dados.territorio.municipioId,
+    equipeId: dados.territorio.equipeId,
+    microareaId: dados.territorio.microareaId,
     familiaId: dados.familiaId,
     avaliadorId: resultado.avaliadorId,
     avaliadorNome: dados.avaliadorNome,

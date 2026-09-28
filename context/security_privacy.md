@@ -25,30 +25,44 @@ Regras obrigatórias de proteção de dados pessoais e sensíveis, em conformida
 
 ## 3. Controle de acesso (RBAC territorial)
 
-Implementado em `firestore.rules` (protótipo **não publicado**; testes em `tests/rules/`). Papel e território vêm de **custom claims** do Firebase Auth, atribuídos **somente pelo backend** (Admin SDK) — nenhum documento do banco concede permissão, então ninguém consegue se autopromover.
+Implementado localmente em `firestore.rules` e `functions/src/`; protótipo **não publicado**. As coleções operacionais estão em `tenants/{tenantId}/...`, com `tenantId == municipioId`. Caminhos legados na raiz e todas as escritas diretas do cliente são negados. Não houve migração remota.
 
-| Claim | Tipo | Uso |
-| :--- | :--- | :--- |
-| `perfil` | `ACS` \| `ENFERMEIRO` \| `MEDICO` \| `TECNICO_ENFERMAGEM` \| `CIRURGIAO_DENTISTA` \| `COORDENADOR_APS` \| `ADMIN` | Papel |
-| `municipioId` | string | Município (sempre obrigatório) |
-| `equipeId` | string | Equipe (ACS e profissionais da eSF) |
-| `microareaIds` | lista de strings | Microáreas do ACS |
+Identidade exige e-mail verificado no domínio exato `@ufms.br` e entrada `google.com`. Os [campos do token Firebase](https://firebase.google.com/docs/rules/rules-and-auth) não comprovam isoladamente pertencimento ao Google Workspace.
 
-| Perfil | Pode ler/escrever famílias, domicílios, indivíduos e avaliações de… |
-| :--- | :--- |
-| ACS | suas microáreas, dentro da sua equipe |
-| Profissional da eSF | toda a área da sua equipe |
-| COORDENADOR_APS | todo o município; único que faz transferência territorial |
-| ADMIN | **nenhum dado de saúde** — gerencia microáreas e lê a auditoria |
+| Claim | Uso |
+| --- | --- |
+| `perfil` | ACS, ENFERMEIRO, MEDICO, TECNICO_ENFERMAGEM, CIRURGIAO_DENTISTA, COORDENADOR_APS ou ADMIN |
+| `tenantId`, `municipioId` | Município ativo, iguais entre si e ao caminho |
+| `equipeId` | Obrigatória para ACS e profissionais da eSF |
+| `microareaIds` | Microáreas do ACS; lista limitada no schema |
+| `versaoAcesso` | Versão comparada com vínculo vigente para invalidar escopos alterados |
 
-Regras adicionais:
+`tenants/{tenantId}/vinculos/{uid}` guarda vínculo `ATIVO`/`INATIVO`, perfil e território, validado por `vinculoSchema`. Somente funções gerem vínculos; escrever documentos pelo cliente não concede permissão. ADMIN administra vínculos no próprio município, sem alterar seu próprio vínculo nem criar/alterar outro ADMIN. Bootstrap administrativo real é externo à aplicação. O seed é exclusivo para emuladores e contas fictícias.
 
-- `avaliacoes_risco` e `logs_auditoria` são **append-only** (update e delete negados).
-- Nenhuma exclusão física de família, domicílio ou indivíduo: inativação por `status`.
-- O avaliador de uma avaliação é sempre o usuário autenticado (`avaliadorId == uid`); não dá para registrar em nome de outro.
-- O resumo de risco da família (usado no painel de prioridades) não pode ser alterado diretamente: só muda junto com a criação da avaliação correspondente.
-- Limitações conhecidas (a resolver na Cloud Function planejada): o conteúdo de cada item de `fatoresDeterminantes` não é inspecionado pelas regras; o `LogAuditoria` ainda é gravado pelo cliente e não é obrigatório pelas regras; `dataAvaliacao` vem do cliente — ordene o histórico por `registradoEm`.
-- Toda consulta de listagem deve filtrar pelo território (`municipioId`, `equipeId`, `microareaId`), senão é negada.
+| Perfil | Leitura e registro clínico |
+| --- | --- |
+| ACS | Suas microáreas dentro da equipe |
+| Profissional eSF | Sua equipe |
+| COORDENADOR_APS | Seu município |
+| ADMIN | Nenhum dado de saúde; gestão de vínculos e leitura de auditoria municipal |
+
+Regras verificam vínculo ativo, versão e correspondência com claims antes da leitura. Backend de avaliação revalida o vínculo **dentro da transação**, além de território, família, domicílio, responsável e membros referenciados. Admin SDK não é protegido pelas regras: estas verificações no servidor são obrigatórias.
+
+- `avaliacoes_risco`, recibos e logs são escritos pelo backend; avaliações e logs são append-only.
+- Cálculo e autoria vêm do servidor autenticado; cliente envia respostas, versão da escala, coleta e base esperada, nunca a pontuação autoritativa.
+- Resumo da família, avaliação, recibo e auditoria são gravados na mesma transação. Repetição do mesmo ID/conteúdo não duplica; conteúdo diferente com mesmo ID é negado.
+- Cadastro ou avaliação base divergente gera recibo de conflito; a operação é preservada sem alterar o histórico.
+- Leituras clínicas incluem filtros de município, equipe e microárea correspondentes ao perfil. ADMIN e coordenação consultam apenas auditoria do município.
+- Cadastro, inativação e transferência territorial ainda precisam de endpoints próprios; não há escrita cliente alternativa. Transferências entre municípios continuam fora do MVP.
+- Seleção de município não revoga outros vínculos ativos. Tokens antigos de outro vínculo continuam válidos até revogação/alteração desse vínculo; tenant único entre abas ainda não é garantido.
+
+## 3.1. Armazenamento e operação offline
+
+A área institucional consulta o servidor e mantém dados somente na memória da tela; não habilita cache Firestore persistente. A demonstração de campo persiste **apenas fixtures sintéticas** no IndexedDB, com allowlist de famílias e escopo `demo-campo` separado da identidade institucional. `FilaCampo` oferece segregação por usuário/tenant e envio injetável, mas a demonstração não injeta envio remoto nem simula recibos.
+
+Service worker guarda somente shell e assets estáticos do build. Dados clínicos e respostas de autenticação não entram em cache HTTP genérico. Atualizações não forçam reload de formulários.
+
+Antes de armazenamento clínico real, definir dispositivos autorizados, retenção, expiração offline, proteção/criptografia e gestão de chaves, logout com pendências, limpeza de escopo e revogação. IndexedDB sozinho não garante proteção física do aparelho. A revogação online não apaga imediatamente um aparelho desconectado.
 
 ---
 
@@ -69,7 +83,7 @@ Regras adicionais:
 - `dataHora` ISO 8601 com fuso, mais o horário do servidor (`registradoEm`);
 - `justificativa`, quando aplicável.
 
-IP de origem e User-Agent não são confiáveis quando enviados pelo cliente; serão registrados pela Cloud Function de auditoria (planejada em `functions/`).
+`LogAuditoriaSchema` cobre avaliações; `LogAcessoSchema` cobre aprovação/revogação de vínculos. Ambos são validados antes da escrita server-side e recebem `registradoEm` do servidor. Auditoria de todas as consultas e operações de cadastro ainda não está implementada. IP/User-Agent não são registrados nesta entrega; valores enviados pelo cliente não seriam prova confiável.
 
 ---
 
@@ -79,3 +93,11 @@ IP de origem e User-Agent não são confiáveis quando enviados pelo cliente; se
 - Use geradores de dados sintéticos (ex.: Faker) com CPF/CNS matematicamente válidos, mas fictícios.
 - Nomes fictícios claramente ilustrativos: `"Família Silva Exemplo"`, `"Cidadão Teste"`, `"Maria Fictícia dos Santos"`.
 - Configuração real do Firebase fica apenas no `.env` (fora do git); o `.env.example` só tem chaves vazias.
+
+## Incremento online: cadastro, transferência e conflitos
+
+O cadastro inicial cria domicílio, um responsável e família em transação, com recibo idempotente em `operacoes_cadastro` e logs por recurso. Não cria avaliação; o resumo inicial do contrato deve aparecer como **Sem avaliação**. Atualizações cadastrais neste incremento limitam-se a prontuário, contato e status. Gestão completa de membros e edição do domicílio permanecem pendentes.
+
+Transferências exigem coordenação da APS no mesmo município, versão atual, destino cadastrado e domicílio não compartilhado; atualizam família, domicílio e até 50 membros atomicamente. Avaliações anteriores conservam território e conteúdo originais. A equipe de destino não recebe acesso automático ao histórico do território anterior.
+
+A consulta de conflitos ocorre por callable, somente para o autor com vínculo e território atuais. A revisão compara os 13 indicadores e exige nova confirmação, gerando outro identificador; a operação original permanece imutável. Recibos e operações não são legíveis diretamente pelo cliente. Paginação de famílias preserva filtros territoriais em cada página. Nenhum dado clínico deste incremento é persistido offline no navegador.

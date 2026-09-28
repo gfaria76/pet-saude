@@ -23,15 +23,15 @@ const emit = defineEmits<{
 
 const estilo = computed(() => estiloFaixa(props.classificacao))
 
-const tamanhoClasses = computed(() => {
+const tamanhoBadge = computed(() => {
   switch (props.tamanho) {
     case 'sm':
-      return 'text-xs px-2 py-0.5 gap-1'
+      return 'sm'
     case 'lg':
-      return 'text-sm px-3.5 py-1.5 gap-2'
+      return 'lg'
     case 'md':
     default:
-      return 'text-xs md:text-sm px-2.5 py-1 gap-1.5'
+      return 'md'
   }
 })
 
@@ -43,30 +43,34 @@ const descricaoAcessivel = computed(() => {
 </script>
 
 <template>
-  <component
-    :is="interativo ? 'button' : 'span'"
+  <!-- Componente UBadge do Nuxt UI v4 com customização estrita de acessibilidade clínica via :ui -->
+  <UBadge
     :type="interativo ? 'button' : undefined"
-    :class="[
-      'inline-flex items-center rounded-full border shadow-sm font-medium',
-      tamanhoClasses,
-      estilo.suave,
-      interativo
-        ? 'cursor-pointer hover:shadow transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-blue-700 min-h-[44px] md:min-h-0'
-        : 'cursor-default'
-    ]"
+    color="neutral"
+    :as="interativo ? 'button' : 'span'"
+    :size="tamanhoBadge"
+    variant="subtle"
     :aria-label="descricaoAcessivel"
     :title="`${estilo.rotulo} — ${estilo.acaoRecomendada}`"
+    :class="[
+      'rounded-full border font-bold transition-all shadow-xs gap-1.5 select-none',
+      estilo.suave,
+      interativo ? 'cursor-pointer hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 min-h-[44px] md:min-h-0' : 'cursor-default'
+    ]"
+    :ui="{
+      base: 'inline-flex items-center tracking-tight ring-0'
+    }"
     @click="interativo && emit('click')"
   >
-    <!-- Cor + ícone + texto: nunca depender só da cor -->
-    <Icon :name="estilo.icone" class="w-4 h-4 md:w-5 md:h-5 shrink-0" aria-hidden="true" />
-    <span class="tracking-tight">{{ estilo.sigla }} — {{ estilo.rotulo }}</span>
+    <!-- Cor + Ícone + Texto: Regra fundamental de acessibilidade clínica (WCAG 2.1 AA) -->
+    <Icon :name="estilo.icone" class="w-4 h-4 md:w-4.5 md:h-4.5 shrink-0" aria-hidden="true" />
+    <span>{{ estilo.sigla }} — {{ estilo.rotulo }}</span>
     <span
       v-if="pontuacao !== undefined"
-      :class="['ml-0.5 px-1.5 rounded-full text-xs font-bold', estilo.solido]"
+      :class="['ml-1 px-1.5 py-0.2 rounded-full text-[11px] font-black', estilo.solido]"
       aria-hidden="true"
     >
       {{ pontuacao }} pts
     </span>
-  </component>
+  </UBadge>
 </template>

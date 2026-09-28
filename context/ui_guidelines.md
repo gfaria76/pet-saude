@@ -10,7 +10,7 @@ Os usuários trabalham sob alta demanda, em ambientes ruidosos ou sob sol forte 
 
 1. **Poucos passos para ações frequentes:**
    - Um ACS deve registrar uma reavaliação com o mínimo de toques.
-   - Campos com resposta padrão ("Não" / "Ausente") vêm preenchidos, com salvamento explícito.
+   - Nos novos formulários institucionais e de campo, respostas começam como “Não informado”; o profissional confirma “Sim” ou “Não”. A avaliação exige os 13 indicadores respondidos. Rascunhos incompletos não são classificados. Isso substitui o pré-preenchimento negativo sugerido anteriormente, preservando a distinção entre não coletado e ausente.
 2. **Formulários objetivos e agrupados:** Domicílio / Saneamento; Condições Sociais; Condições Clínicas / Biológicas; Ciclo de Vida.
 3. **Prevenção ativa de erros:**
    - Confirmação em duas etapas para ações críticas (inativar família, trocar responsável familiar).
@@ -50,51 +50,76 @@ Toda classificação exibida (cards, linhas de tabela, painel) é clicável e ab
 
 ---
 
-## 4. Padrão de ícones — Health Icons
+## 4. Padrão de ícones — Coleções Iconify Padronizadas
 
-O conjunto padrão do app é **[Health Icons](https://healthicons.org)** (`healthicons:*`, licença MIT, pacote `@iconify-json/healthicons`), servido pelo `@nuxt/icon`. Ele foi desenhado para saúde pública e cobre ACS, UBS, condições clínicas e determinantes sociais.
+O sistema utiliza um conjunto curado e padronizado de coleções Iconify via `@nuxt/icon`, garantindo identidade clínica, rigor acadêmico, suporte à climatologia pantaneira e funcionamento 100% offline em visitas domiciliares:
 
-### 4.1. Regras
+1. **[Health Icons](https://healthicons.org) (`healthicons:*`, `@iconify-json/healthicons`):**
+   - Saúde pública comunitária, atuação de ACS, determinantes sociais, indivíduos e faixas de risco (R0 a R3).
+2. **[Medical Icon](https://icon-sets.iconify.design/medical-icon/) (`medical-icon:*`, `@iconify-json/medical-icon`):**
+   - Atenção Primária à Saúde (`medical-icon:i-family-practice`), registros médicos / prontuários familiares (`medical-icon:i-medical-records`), serviços sociais em saúde e organização de equipes de cuidado (`medical-icon:i-care-staff-area`).
+3. **[Academicons](https://jpswalsh.github.io/academicons/) (`academicons:*`, `@iconify-json/academicons`):**
+   - Parceria acadêmica com a Universidade Federal de Mato Grosso do Sul (UFMS), protocolos científicos validados (`academicons:protocols`), ciência aberta e transparência metodológica (`academicons:open-access`, `academicons:open-data`).
+4. **[Weather Icons](https://erikflowers.github.io/weather-icons/) (`wi:*`, `@iconify-json/wi`):**
+   - Climatologia extrema do Pantanal e Norte de MS (Coxim e Corumbá): alternador de Modo Sol Forte (`wi:day-sunny`), alertas de calor extremo de campo (`wi:hot`), cheias/alagamentos pantaneiros (`wi:flood`) e monitoramento térmico (`wi:thermometer`).
+5. **Lucide (`lucide:*`, `@iconify-json/lucide`):**
+   - Exclusivamente para controles utilitários genéricos de interface (salvar, filtro, fechar, buscar, chevron, setas).
 
-1. **Health Icons primeiro:** todo ícone com significado de saúde, pessoa, território ou risco usa `healthicons:`.
-2. **Lucide só como exceção**, para controles genéricos que não existem na coleção (salvar, filtro, fechar, buscar, cadeado, tendência etc.). As exceções ficam listadas em `app/utils/icones.ts`; **não use `lucide:` direto em componentes**.
-3. **Variantes:** a preenchida (`healthicons:<nome>`) indica estado de risco (badges, cards de faixa); a `-outline` é usada em navegação e ícones neutros.
-4. **Mapas centrais, fora do domínio:** faixa → ícone em `app/utils/estiloFaixaRisco.ts`; indicador → ícone em `app/utils/iconesIndicador.ts`; ícones gerais e exceções Lucide em `app/utils/icones.ts`. O motor em `shared/domain/` não conhece ícones.
-5. **Acessibilidade:** ícone sempre com `aria-hidden="true"` e acompanhado de texto.
-6. **Offline:** os ícones usados são empacotados no bundle do cliente (`icon.clientBundle.scan` no `nuxt.config.ts`), para funcionar sem internet em visita domiciliar. Como os mapas ficam em arquivos `.ts`, o `globInclude` do scan inclui `app/**/*.ts` além dos `.vue` (por padrão o `@nuxt/icon` só varre `.vue`).
+### 4.1. Regras Operacionais
 
-### 4.2. Ícones por indicador
+1. **Mapas centrais, fora do domínio:**
+   - Faixa de risco → ícone em `app/utils/estiloFaixaRisco.ts`;
+   - Indicadores clínicos → ícone em `app/utils/iconesIndicador.ts`;
+   - Ícones gerais, de serviços e utilitários em `app/utils/icones.ts`.
+   - O motor em `shared/domain/` não conhece e não importa ícones.
+2. **Semântica obrigatória:** Não utilize `lucide:` diretamente em componentes para conceitos de saúde, clima ou pesquisa acadêmica.
+3. **Acessibilidade (WCAG AA):** Todo ícone decorativo deve conter `aria-hidden="true"` e vir acompanhado de texto explicativo ou rótulo semântico acessível (`aria-label`).
+4. **Empacotamento Offline:** Os pacotes `@iconify-json/healthicons`, `@iconify-json/medical-icon`, `@iconify-json/academicons`, `@iconify-json/wi` e `@iconify-json/lucide` estão instalados em `devDependencies`. O `clientBundle.scan` em `nuxt.config.ts` varre todos os arquivos `app/**/*.{vue,ts}` e empacota os ícones utilizados no bundle final, viabilizando o uso sem internet nas visitas de campo.
 
-| Indicador | Ícone |
-| :--- | :--- |
-| Acamado | `healthicons:hospitalized` |
-| Deficiência física | `healthicons:wheelchair` |
-| Deficiência mental | `healthicons:mental-health` |
-| Desnutrição grave | `healthicons:malnutrition` |
-| Drogadição (álcool/drogas) | `healthicons:alcohol` |
-| Desemprego | `healthicons:low-income-level` |
-| Analfabetismo | `healthicons:book` |
-| Menor de 6 meses | `healthicons:baby-0306m` |
-| Maior de 70 anos | `healthicons:elderly` |
-| Hipertensão | `healthicons:blood-pressure` |
-| Diabetes | `healthicons:diabetes` |
-| Saneamento inadequado | `healthicons:water-sanitation` |
-| Relação morador/cômodo | `healthicons:i-groups-perspective-crowd` |
+### 4.2. Ícones por Indicador de Risco (`app/utils/iconesIndicador.ts`)
 
-### 4.3. Ícones gerais (`app/utils/icones.ts`)
+| Indicador | Coleção | Ícone |
+| :--- | :--- | :--- |
+| Acamado | Health Icons | `healthicons:hospitalized` |
+| Deficiência física | Health Icons | `healthicons:wheelchair` |
+| Deficiência mental | Health Icons | `healthicons:mental-health` |
+| Desnutrição grave | Health Icons | `healthicons:malnutrition` |
+| Drogadição (álcool/drogas) | Health Icons | `healthicons:alcohol` |
+| Desemprego | Health Icons | `healthicons:low-income-level` |
+| Analfabetismo | Health Icons | `healthicons:book` |
+| Menor de 6 meses | Health Icons | `healthicons:baby-0306m` |
+| Maior de 70 anos | Health Icons | `healthicons:elderly` |
+| Hipertensão | Health Icons | `healthicons:blood-pressure` |
+| Diabetes | Health Icons | `healthicons:diabetes` |
+| Saneamento inadequado | Health Icons | `healthicons:water-sanitation` |
+| Relação morador/cômodo | Health Icons | `healthicons:i-groups-perspective-crowd` |
 
-| Uso | Ícone |
-| :--- | :--- |
-| Logo do app | `healthicons:community-healthworker` |
-| Avaliador | `healthicons:community-healthworker-outline` |
-| Família | `healthicons:ui-folder-family-outline` |
-| Pessoa | `healthicons:person-outline` |
-| UBS / município | `healthicons:ambulatory-clinic-outline` / `healthicons:city-outline` |
-| Selo LGPD | `healthicons:health-data-security-outline` |
-| Data da avaliação | `healthicons:calendar-outline` |
-| Registro confirmado | `healthicons:i-documents-accepted-outline` |
-| Estado vazio | `healthicons:question-circle-outline` |
-| Escala / explicação | `healthicons:chart-line-outline` |
-| **Exceções Lucide** | `lucide:save`, `filter`, `x`, `search`, `check`, `scale` (regra de decisão), `trending-up`, `trending-down`, `minus` |
+### 4.3. Mapa de Ícones do Sistema (`app/utils/icones.ts`)
 
-Os nomes foram conferidos na API do Iconify; a escolha visual final deve ser validada com a equipe de campo.
+| Domínio de Uso | Coleção | Ícone |
+| :--- | :--- | :--- |
+| **Atenção Primária à Saúde** | Medical Icon | `medical-icon:i-family-practice` |
+| **Prontuário Familiar** | Medical Icon | `medical-icon:i-medical-records` |
+| **Equipe de Saúde e Cuidado** | Medical Icon | `medical-icon:i-care-staff-area` |
+| **Serviço Social na APS** | Medical Icon | `medical-icon:i-social-services` |
+| **ACS / Avaliador** | Health Icons | `healthicons:community-healthworker-outline` |
+| **Família / Indivíduo** | Health Icons | `healthicons:ui-folder-family-outline` / `healthicons:person-outline` |
+| **UBS / Município** | Health Icons | `healthicons:ambulatory-clinic-outline` / `healthicons:city-outline` |
+| **Selo de Proteção LGPD** | Health Icons | `healthicons:health-data-security-outline` |
+| **Modo Sol Forte** | Weather Icons | `wi:day-sunny` |
+| **Alerta Climatológico / Calor** | Weather Icons | `wi:hot` |
+| **Cheias e Alagamentos Pantanal** | Weather Icons | `wi:flood` |
+| **Temperatura de Campo** | Weather Icons | `wi:thermometer` |
+| **Pesquisa e Parceria UFMS** | Academicons | `academicons:open-access` |
+| **Protocolo Científico** | Academicons | `academicons:protocols` |
+| **Dados Abertos e Transparência** | Academicons | `academicons:open-data` |
+| **Controles de Interface (Lucide)** | Lucide | `lucide:save`, `filter`, `x`, `search`, `check`, `scale`, `arrow-left`, `chevron-right`, `plus` |
+
+## 5. Temas de gestão e campo (Nuxt UI 4)
+
+- Configuração global em `app/app.config.ts`, dentro do diretório de aplicação do Nuxt 4; conferir a versão instalada antes de alterar props ou slots.
+- Paleta operacional `primary: cyan`, `neutral: slate`; semântica clínica permanece no mapa `estiloFaixaRisco.ts`.
+- Usar tokens semânticos (`bg-default`, `text-default`, `text-muted`, `border-default`) para acompanhar os modos claro e escuro. Customizações locais usam a prop `ui` com os slots reais de cada componente.
+- O seletor oferece Sistema, Claro e Escuro. Sol forte ativa leitura clara com tokens de alto contraste e restaura a preferência anterior ao desligar.
+- Gestão usa cabeçalho e sidebar recolhível a partir de telas largas; telas menores mantêm navegação inferior e controles de leitura.
+- `pnpm typecheck` verifica contratos Vue/TypeScript; complementar com build e inspeção no navegador.

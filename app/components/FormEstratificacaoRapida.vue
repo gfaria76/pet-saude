@@ -12,6 +12,7 @@ import {
 } from '~~/shared/domain/risk-engine'
 import { ICONES } from '~/utils/icones'
 import { ICONES_INDICADOR } from '~/utils/iconesIndicador'
+import BadgeRiscoFamiliar from '~/components/BadgeRiscoFamiliar.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -91,22 +92,22 @@ function alternarIndicador(codigo: IndicadorRiscoCodigo) {
 </script>
 
 <template>
-  <div class="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
+  <div class="bg-default rounded-2xl border border-default shadow-xl overflow-hidden">
     <!-- Identificação e prévia -->
-    <div class="bg-slate-900 text-white p-5 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div class="bg-default text-default p-5 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <p class="text-xs text-slate-300">
+        <p class="text-xs text-muted">
           Nova avaliação<span v-if="prontuario"> · Prontuário {{ prontuario }}</span>
         </p>
-        <h2 class="text-xl font-bold mt-1">{{ nomeFamilia }}</h2>
-        <p class="text-xs text-slate-400 mt-0.5">Escala: {{ escala.versao }}</p>
+        <h2 class="text-xl font-bold mt-1 text-default">{{ nomeFamilia }}</h2>
+        <p class="text-xs text-dimmed mt-0.5">Escala: {{ escala.versao }}</p>
       </div>
 
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-3.5 flex items-center gap-4 shrink-0" aria-live="polite">
+      <div class="bg-elevated border border-default rounded-xl p-3.5 flex items-center gap-4 shrink-0" aria-live="polite">
         <p>
-          <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block">Prévia</span>
-          <span class="text-2xl font-black">{{ calculoPreview.pontuacaoTotal }}</span>
-          <span class="text-xs text-slate-400"> pontos</span>
+          <span class="text-[11px] uppercase tracking-wider text-dimmed font-semibold block">Prévia</span>
+          <span class="text-2xl font-black text-default">{{ calculoPreview.pontuacaoTotal }}</span>
+          <span class="text-xs text-dimmed"> pontos</span>
         </p>
         <BadgeRiscoFamiliar :classificacao="calculoPreview.classificacao" :interativo="false" />
       </div>
@@ -114,7 +115,7 @@ function alternarIndicador(codigo: IndicadorRiscoCodigo) {
 
     <form class="p-5 md:p-8 space-y-7" @submit.prevent="emit('salvar', calculoPreview)">
       <fieldset v-for="grupo in gruposIndicadores" :key="grupo.titulo" class="space-y-3">
-        <legend class="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-slate-200 pb-1.5 w-full">
+        <legend class="text-sm font-bold text-default uppercase tracking-wider border-b border-default pb-1.5 w-full">
           {{ grupo.titulo }}
         </legend>
 
@@ -126,8 +127,8 @@ function alternarIndicador(codigo: IndicadorRiscoCodigo) {
               'p-3.5 min-h-[56px] rounded-xl border cursor-pointer select-none flex items-center gap-3 transition-colors',
               'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue-700',
               marcados.has(codigo)
-                ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-500'
-                : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                ? 'bg-primary/10 border-blue-400 ring-1 ring-blue-500'
+                : 'bg-muted border-default hover:bg-elevated'
             ]"
           >
             <input
@@ -135,10 +136,10 @@ function alternarIndicador(codigo: IndicadorRiscoCodigo) {
               class="sr-only"
               :checked="marcados.has(codigo)"
               @change="alternarIndicador(codigo)"
-            >
-            <Icon :name="ICONES_INDICADOR[codigo]" class="w-7 h-7 text-slate-700 shrink-0" aria-hidden="true" />
+            />
+            <Icon :name="ICONES_INDICADOR[codigo]" class="w-7 h-7 text-toned shrink-0" aria-hidden="true" />
             <span class="flex-1 min-w-0">
-              <span class="block text-sm font-semibold text-slate-900 leading-snug">
+              <span class="block text-sm font-semibold text-highlighted leading-snug">
                 {{ METADADOS_INDICADORES[codigo].descricao }}
               </span>
               <span class="text-xs font-bold text-blue-800">{{ rotuloPeso(codigo) }}</span>
@@ -146,7 +147,7 @@ function alternarIndicador(codigo: IndicadorRiscoCodigo) {
             <span
               :class="[
                 'w-6 h-6 rounded-md border flex items-center justify-center shrink-0',
-                marcados.has(codigo) ? 'bg-blue-700 border-blue-700 text-white' : 'bg-white border-slate-400 text-transparent'
+                marcados.has(codigo) ? 'bg-primary border-primary text-inverted' : 'bg-default border-slate-400 text-transparent'
               ]"
               aria-hidden="true"
             >
@@ -156,27 +157,35 @@ function alternarIndicador(codigo: IndicadorRiscoCodigo) {
         </div>
       </fieldset>
 
-      <!-- Regra aplicada antes de salvar -->
-      <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 font-medium flex gap-2">
-        <Icon :name="ICONES.regraDecisao" class="w-4 h-4 text-slate-500 shrink-0 mt-px" aria-hidden="true" />
-        <span>{{ calculoPreview.regraDecisao }}</span>
-      </div>
+      <!-- Regra aplicada antes de salvar com UAlert -->
+      <UAlert
+        :icon="ICONES.regraDecisao"
+        color="neutral"
+        variant="subtle"
+        :title="calculoPreview.regraDecisao"
+        :ui="{
+          root: 'rounded-xl border border-default bg-muted text-default text-xs font-medium',
+          title: 'text-xs font-medium text-default'
+        }"
+      />
 
-      <div class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3 pt-4 border-t border-slate-200">
-        <button
-          type="button"
-          class="px-5 py-3 text-sm font-semibold text-slate-800 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 cursor-pointer"
+      <div class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3 pt-4 border-t border-default">
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="lg"
+          label="Cancelar"
+          class="font-semibold"
           @click="emit('cancelar')"
-        >
-          Cancelar
-        </button>
-        <button
+        />
+        <UButton
           type="submit"
-          class="px-6 py-3 text-sm font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer"
-        >
-          <Icon :name="ICONES.salvar" class="w-4 h-4" aria-hidden="true" />
-          <span>Salvar avaliação</span>
-        </button>
+          color="primary"
+          size="lg"
+          :icon="ICONES.salvar"
+          label="Salvar avaliação"
+          class="font-bold shadow-md"
+        />
       </div>
     </form>
   </div>

@@ -1,33 +1,34 @@
 module.exports = {
   root: true,
-  env: {
-    es6: true,
-    node: true,
-  },
+  env: { es2022: true, node: true },
   extends: [
-    "eslint:recommended",
-    "plugin:import/errors",
-    "plugin:import/warnings",
-    "plugin:import/typescript",
-    "google",
-    "plugin:@typescript-eslint/recommended",
+    'eslint:recommended',
+    'plugin:import/errors',
+    'plugin:import/warnings',
+    'plugin:import/typescript',
+    'google',
+    'plugin:@typescript-eslint/recommended'
   ],
-  parser: "@typescript-eslint/parser",
+  parser: '@typescript-eslint/parser',
   parserOptions: {
-    project: ["tsconfig.json", "tsconfig.dev.json"],
-    sourceType: "module",
+    project: ['tsconfig.json', 'tsconfig.dev.json'],
+    sourceType: 'module'
   },
-  ignorePatterns: [
-    "/lib/**/*", // Ignore built files.
-    "/generated/**/*", // Ignore generated files.
-  ],
-  plugins: [
-    "@typescript-eslint",
-    "import",
-  ],
+  ignorePatterns: ['/lib/**/*', '/generated/**/*'],
+  plugins: ['@typescript-eslint', 'import'],
   rules: {
-    "quotes": ["error", "double"],
-    "import/no-unresolved": 0,
-    "indent": ["error", 2],
-  },
-};
+    'quotes': ['error', 'single'],
+    'semi': ['error', 'never'],
+    'object-curly-spacing': ['error', 'always'],
+    'comma-dangle': ['error', 'never'],
+    'arrow-parens': ['error', 'as-needed'],
+    // TypeScript signatures carry parameter/return contracts; comments document intent.
+    'require-jsdoc': 'off',
+    'valid-jsdoc': 'off',
+    // tsc --noEmit resolves shared TypeScript and SDK export maps during every build.
+    'import/no-unresolved': 'off',
+    // Domain schemas and SDK calls need readable signatures; formatter targets 120.
+    'max-len': ['error', { code: 140, ignoreUrls: true }],
+    'indent': ['error', 2]
+  }
+}

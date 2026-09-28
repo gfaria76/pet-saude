@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, provide, inject, hasInjectionContext, type InjectionKey } from 'vue'
 import {
   calcularEstratificacaoRisco,
   FaixaRisco,
@@ -11,20 +11,24 @@ import {
 import {
   montarDocumentoAvaliacao,
   type AvaliacaoRiscoDoc,
-  type FamiliaDoc
+  type FamiliaDoc,
+  type DomicilioDoc,
+  type IndividuoDoc,
+  type MicroareaDoc
 } from '~~/shared/domain/schemas'
+import { agregarRiscoPorMicroarea, type AgregacaoMicroarea } from '~/utils/mapaCalorRisco'
 
 /**
- * Estado da tela do painel territorial.
+ * Estado da tela do painel territorial e prontuário familiar.
  *
  * Enquanto a persistência no Firestore não existe (context/architecture.md),
- * os dados ficam em memória e são 100% SINTÉTICOS (LGPD). O fluxo já segue o
+ * os dados ficam em memória e são 100% SINTÉTICOS (LGPD). O fluxo segue o
  * modelo real: histórico append-only por família, resumo da família derivado
  * da última avaliação e documento validado pelo Zod antes de "gravar".
  */
 
 /** Avaliador da sessão de demonstração (fictício). Virá do Firebase Auth. */
-const AVALIADOR_DEMO = {
+export const AVALIADOR_DEMO = {
   id: 'uid-demo-acs',
   nome: 'ACS Demonstração (Fictício)',
   perfil: PerfilProfissional.ACS
@@ -33,30 +37,189 @@ const AVALIADOR_DEMO = {
 type FamiliaSemResumo = Omit<FamiliaDoc,
   'ultimaClassificacaoRisco' | 'ultimaPontuacaoRisco' | 'dataUltimaAvaliacao' | 'ultimaAvaliacaoId'>
 
-const FAMILIAS_SINTETICAS: FamiliaSemResumo[] = [
+export const FAMILIAS_SINTETICAS: FamiliaSemResumo[] = [
   {
     id: 'fam-coxim-001', prontuarioFamiliar: 'CX-1042', domicilioId: 'dom-001',
     municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', microareaId: 'MA-01',
     responsavelNome: 'Maria Fictícia dos Santos', responsavelId: 'ind-001',
-    status: 'ATIVA', quantidadeMembros: 4
+    status: 'ATIVA', quantidadeMembros: 4, contato: '(67) 99123-0001'
   },
   {
     id: 'fam-coxim-002', prontuarioFamiliar: 'CX-1088', domicilioId: 'dom-002',
     municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', microareaId: 'MA-01',
-    responsavelNome: 'Família Silva Exemplo', responsavelId: 'ind-002',
-    status: 'ATIVA', quantidadeMembros: 3
+    responsavelNome: 'Família Silva Exemplo', responsavelId: 'ind-005',
+    status: 'ATIVA', quantidadeMembros: 3, contato: '(67) 99123-0002'
   },
   {
     id: 'fam-corumba-003', prontuarioFamiliar: 'CB-2031', domicilioId: 'dom-003',
     municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', microareaId: 'MA-02',
-    responsavelNome: 'Cidadã Teste Souza', responsavelId: 'ind-003',
-    status: 'ATIVA', quantidadeMembros: 5
+    responsavelNome: 'Cidadã Teste Souza', responsavelId: 'ind-008',
+    status: 'ATIVA', quantidadeMembros: 5, contato: '(67) 99123-0003'
   },
   {
     id: 'fam-corumba-004', prontuarioFamiliar: 'CB-2095', domicilioId: 'dom-004',
     municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', microareaId: 'MA-03',
-    responsavelNome: 'Cidadão Teste Lima', responsavelId: 'ind-004',
-    status: 'ATIVA', quantidadeMembros: 2
+    responsavelNome: 'Cidadão Teste Lima', responsavelId: 'ind-013',
+    status: 'ATIVA', quantidadeMembros: 2, contato: '(67) 99123-0004'
+  }
+]
+
+export const DOMICILIOS_SINTETICOS: DomicilioDoc[] = [
+  {
+    id: 'dom-001',
+    municipioId: 'coxim',
+    equipeId: 'ESF-PANTANAL-01',
+    microareaId: 'MA-01',
+    logradouro: 'Rua das Palmeiras Pantaneiras',
+    numero: '142',
+    bairro: 'Senhor Divino',
+    cep: '79400000',
+    quantidadeComodos: 4,
+    quantidadeMoradores: 4,
+    abastecimentoAgua: 'REDE_ENCANADA',
+    esgotamentoSanitario: 'FOSSA_SEPTICA',
+    destinoLixo: 'COLETADO',
+    saneamentoInadequado: false,
+    adensamentoExcessivo: false
+  },
+  {
+    id: 'dom-002',
+    municipioId: 'coxim',
+    equipeId: 'ESF-PANTANAL-01',
+    microareaId: 'MA-01',
+    logradouro: 'Avenida Beira Rio',
+    numero: '88',
+    bairro: 'Piracema',
+    cep: '79400000',
+    quantidadeComodos: 2,
+    quantidadeMoradores: 3,
+    abastecimentoAgua: 'REDE_ENCANADA',
+    esgotamentoSanitario: 'FOSSA_SEPTICA',
+    destinoLixo: 'COLETADO',
+    saneamentoInadequado: false,
+    adensamentoExcessivo: true
+  },
+  {
+    id: 'dom-003',
+    municipioId: 'corumba',
+    equipeId: 'ESF-FRONTEIRA-02',
+    microareaId: 'MA-02',
+    logradouro: 'Rua Frei Mariano',
+    numero: '1030',
+    bairro: 'Centro',
+    cep: '79300000',
+    quantidadeComodos: 5,
+    quantidadeMoradores: 5,
+    abastecimentoAgua: 'REDE_ENCANADA',
+    esgotamentoSanitario: 'REDE_COLETORA',
+    destinoLixo: 'COLETADO',
+    saneamentoInadequado: false,
+    adensamentoExcessivo: false
+  },
+  {
+    id: 'dom-004',
+    municipioId: 'corumba',
+    equipeId: 'ESF-FRONTEIRA-02',
+    microareaId: 'MA-03',
+    logradouro: 'Alameda Tamandaré',
+    numero: '45',
+    bairro: 'Cervejaria',
+    cep: '79300000',
+    quantidadeComodos: 3,
+    quantidadeMoradores: 2,
+    abastecimentoAgua: 'REDE_ENCANADA',
+    esgotamentoSanitario: 'REDE_COLETORA',
+    destinoLixo: 'COLETADO',
+    saneamentoInadequado: false,
+    adensamentoExcessivo: false
+  }
+]
+
+/**
+ * Centroides aproximados e 100% sintéticos das microáreas de demonstração,
+ * usados só pelo mapa de calor territorial do dashboard. Nunca representam
+ * o endereço de uma família (minimização LGPD).
+ */
+export const MICROAREAS_SINTETICAS: MicroareaDoc[] = [
+  { id: 'MA-01', numero: '01', descricao: 'Senhor Divino / Piracema', municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', latitude: -18.5013, longitude: -54.7592 },
+  { id: 'MA-02', numero: '02', descricao: 'Centro', municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', latitude: -19.0092, longitude: -57.6516 },
+  { id: 'MA-03', numero: '03', descricao: 'Cervejaria', municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', latitude: -19.0180, longitude: -57.6440 }
+]
+
+export const INDIVIDUOS_SINTETICOS: IndividuoDoc[] = [
+  // Família CX-1042 (Maria Fictícia)
+  {
+    id: 'ind-001', familiaId: 'fam-coxim-001', municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', microareaId: 'MA-01',
+    nome: 'Maria Fictícia dos Santos', dataNascimento: '1958-03-12', sexo: 'FEMININO', parentesco: 'Responsável Familiar',
+    condicoesCronicas: { hipertenso: false, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: true, usoAbusivoDrogas: false }
+  },
+  {
+    id: 'ind-002', familiaId: 'fam-coxim-001', municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', microareaId: 'MA-01',
+    nome: 'João Fictício dos Santos', dataNascimento: '1984-07-22', sexo: 'MASCULINO', parentesco: 'Filho',
+    condicoesCronicas: { hipertenso: false, diabetico: false, acamado: true, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: true }
+  },
+  {
+    id: 'ind-003', familiaId: 'fam-coxim-001', municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', microareaId: 'MA-01',
+    nome: 'Ana Fictícia dos Santos', dataNascimento: '2006-11-05', sexo: 'FEMININO', parentesco: 'Neta',
+    condicoesCronicas: { hipertenso: false, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: false }
+  },
+  {
+    id: 'ind-004', familiaId: 'fam-coxim-001', municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', microareaId: 'MA-01',
+    nome: 'Lucas Fictício dos Santos', dataNascimento: '2026-05-20', sexo: 'MASCULINO', parentesco: 'Bisneto',
+    condicoesCronicas: { hipertenso: false, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: false }
+  },
+  // Família CX-1088 (Silva Exemplo)
+  {
+    id: 'ind-005', familiaId: 'fam-coxim-002', municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', microareaId: 'MA-01',
+    nome: 'Carlos Silva Exemplo', dataNascimento: '1980-04-15', sexo: 'MASCULINO', parentesco: 'Responsável Familiar',
+    condicoesCronicas: { hipertenso: true, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: false }
+  },
+  {
+    id: 'ind-006', familiaId: 'fam-coxim-002', municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', microareaId: 'MA-01',
+    nome: 'Beatriz Silva Exemplo', dataNascimento: '1982-08-30', sexo: 'FEMININO', parentesco: 'Cônjuge',
+    condicoesCronicas: { hipertenso: false, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: true }
+  },
+  {
+    id: 'ind-007', familiaId: 'fam-coxim-002', municipioId: 'coxim', equipeId: 'ESF-PANTANAL-01', microareaId: 'MA-01',
+    nome: 'Daniel Silva Exemplo', dataNascimento: '2014-01-10', sexo: 'MASCULINO', parentesco: 'Filho',
+    condicoesCronicas: { hipertenso: false, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: false }
+  },
+  // Família CB-2031 (Teste Souza)
+  {
+    id: 'ind-008', familiaId: 'fam-corumba-003', municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', microareaId: 'MA-02',
+    nome: 'Cidadã Teste Souza', dataNascimento: '1951-09-14', sexo: 'FEMININO', parentesco: 'Responsável Familiar',
+    condicoesCronicas: { hipertenso: true, diabetico: true, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: false }
+  },
+  {
+    id: 'ind-009', familiaId: 'fam-corumba-003', municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', microareaId: 'MA-02',
+    nome: 'Paulo Teste Souza', dataNascimento: '1949-12-03', sexo: 'MASCULINO', parentesco: 'Cônjuge',
+    condicoesCronicas: { hipertenso: true, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: false }
+  },
+  {
+    id: 'ind-010', familiaId: 'fam-corumba-003', municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', microareaId: 'MA-02',
+    nome: 'Cláudia Teste Souza', dataNascimento: '1978-02-18', sexo: 'FEMININO', parentesco: 'Filha',
+    condicoesCronicas: { hipertenso: false, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: false }
+  },
+  {
+    id: 'ind-011', familiaId: 'fam-corumba-003', municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', microareaId: 'MA-02',
+    nome: 'Marcos Teste Souza', dataNascimento: '2004-06-25', sexo: 'MASCULINO', parentesco: 'Neto',
+    condicoesCronicas: { hipertenso: false, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: false }
+  },
+  {
+    id: 'ind-012', familiaId: 'fam-corumba-003', municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', microareaId: 'MA-02',
+    nome: 'Rafael Teste Souza', dataNascimento: '2009-10-12', sexo: 'MASCULINO', parentesco: 'Neto',
+    condicoesCronicas: { hipertenso: false, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: false }
+  },
+  // Família CB-2095 (Teste Lima)
+  {
+    id: 'ind-013', familiaId: 'fam-corumba-004', municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', microareaId: 'MA-03',
+    nome: 'Cidadão Teste Lima', dataNascimento: '1991-05-19', sexo: 'MASCULINO', parentesco: 'Responsável Familiar',
+    condicoesCronicas: { hipertenso: false, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: false }
+  },
+  {
+    id: 'ind-014', familiaId: 'fam-corumba-004', municipioId: 'corumba', equipeId: 'ESF-FRONTEIRA-02', microareaId: 'MA-03',
+    nome: 'Juliana Teste Lima', dataNascimento: '1994-09-08', sexo: 'FEMININO', parentesco: 'Cônjuge',
+    condicoesCronicas: { hipertenso: false, diabetico: false, acamado: false, deficienciaFisica: false, deficienciaMental: false, desnutricaoGrave: false, usoAbusivoDrogas: false }
   }
 ]
 
@@ -146,7 +309,7 @@ function gerarHistoricoSintetico(): Record<string, AvaliacaoRiscoDoc[]> {
   return historico
 }
 
-export function useFamilias() {
+function criarEstadoFamilias() {
   /** Histórico append-only de avaliações por família (mais antiga → mais recente). */
   const historicoAvaliacoes = ref<Record<string, AvaliacaoRiscoDoc[]>>(gerarHistoricoSintetico())
 
@@ -162,7 +325,7 @@ export function useFamilias() {
   const familiaSelecionadaId = ref<string | null>(null)
   const drawerAberto = ref(false)
 
-  // Formulário de nova avaliação (referência própria: não depende do drawer)
+  // Formulário de nova avaliação modal (para uso inline opcional)
   const familiaEmAvaliacaoId = ref<string | null>(null)
   const modalAvaliacaoAberto = ref(false)
 
@@ -200,6 +363,16 @@ export function useFamilias() {
     }
     return contagem
   })
+
+  // Agregação por microárea (prevalência de cada indicador) para o mapa de calor do dashboard.
+  const agregacaoRiscoPorMicroarea = computed<AgregacaoMicroarea[]>(() =>
+    agregarRiscoPorMicroarea(
+      familiasDoMunicipio.value.map(familia => ({
+        familia,
+        ultimaAvaliacao: ultimaAvaliacao(familia.id)
+      }))
+    )
+  )
 
   const familiasFiltradas = computed(() => {
     const busca = termoBusca.value.trim().toLowerCase()
@@ -254,10 +427,33 @@ export function useFamilias() {
     abrirDrawerExplicativo(comResumo(familia, doc))
   }
 
+  // Helpers auxiliares para roteamento e visualizações detalhadas
+  function obterFamiliaPorId(id: string): FamiliaDoc | undefined {
+    return familias.value.find(f => f.id === id)
+  }
+
+  function obterDomicilioPorId(domicilioId: string): DomicilioDoc | undefined {
+    return DOMICILIOS_SINTETICOS.find(d => d.id === domicilioId)
+  }
+
+  function obterIndividuosPorFamilia(familiaId: string): IndividuoDoc[] {
+    return INDIVIDUOS_SINTETICOS.filter(i => i.familiaId === familiaId)
+  }
+
+  function obterHistoricoFamilia(familiaId: string): AvaliacaoRiscoDoc[] {
+    return historicoAvaliacoes.value[familiaId] ?? []
+  }
+
+  function obterAvaliacaoAnterior(familiaId: string): AvaliacaoAnteriorEntrada | undefined {
+    return paraEntradaAnterior(ultimaAvaliacao(familiaId) ?? undefined)
+  }
+
   return {
     familias,
     familiasFiltradas,
     contagemRisco,
+    agregacaoRiscoPorMicroarea,
+    microareas: MICROAREAS_SINTETICAS,
     totalFamiliasMunicipio: computed(() => familiasDoMunicipio.value.length),
     filtroMunicipio,
     filtroFaixaRisco,
@@ -274,6 +470,28 @@ export function useFamilias() {
     fecharDrawer,
     iniciarNovaAvaliacao,
     fecharModalAvaliacao,
-    salvarNovaAvaliacao
+    salvarNovaAvaliacao,
+    obterFamiliaPorId,
+    obterDomicilioPorId,
+    obterIndividuosPorFamilia,
+    obterHistoricoFamilia,
+    obterAvaliacaoAnterior
   }
+}
+
+export type EstadoFamilias = ReturnType<typeof criarEstadoFamilias>
+export const FAMILIAS_INJECTION_KEY: InjectionKey<EstadoFamilias> = Symbol('FAMILIAS_INJECTION_KEY')
+
+export function provideFamilias(): EstadoFamilias {
+  const estado = criarEstadoFamilias()
+  provide(FAMILIAS_INJECTION_KEY, estado)
+  return estado
+}
+
+export function useFamilias(): EstadoFamilias {
+  if (hasInjectionContext()) {
+    const injetado = inject(FAMILIAS_INJECTION_KEY, null)
+    if (injetado) return injetado
+  }
+  return criarEstadoFamilias()
 }

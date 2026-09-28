@@ -1,462 +1,83 @@
 rules_version = '2';
 
-// ===============================================================
-// PET-Saúde — Regras de Segurança do Cloud Firestore (PROTÓTIPO)
-// ===============================================================
-//
-// Sincronizado com: shared/domain/schemas/index.ts (Zod),
-// context/domain_model.md e context/security_privacy.md.
-// Mudou o schema? Atualize aqui e em tests/rules/.
-//
-// ---------------------------------------------------------------
-// Modelo de Autorização (custom claims do Firebase Auth)
-// ---------------------------------------------------------------
-// Os claims são atribuídos exclusivamente pelo backend (Admin SDK).
-// Nenhum documento do Firestore concede papel ou território, então o
-// cliente não consegue se autopromover.
-//
-//   perfil:       'ACS' | 'ENFERMEIRO' | 'MEDICO' | 'TECNICO_ENFERMAGEM' |
-//                 'CIRURGIAO_DENTISTA' | 'COORDENADOR_APS' | 'ADMIN'
-//   municipioId:  string (sempre obrigatório)
-//   equipeId:     string (obrigatório para ACS e profissionais da eSF)
-//   microareaIds: list<string> (obrigatório para ACS)
-//
-// Escopo territorial:
-//   - ACS:              apenas as suas microáreas, dentro da sua equipe.
-//   - Profissional eSF: toda a área adscrita da sua equipe.
-//   - COORDENADOR_APS:  todo o seu município.
-//   - ADMIN:            gestão de microáreas e leitura de auditoria;
-//                       SEM acesso a dados de saúde (menor exposição).
-//
-// Consultas (list) devem filtrar pelos campos territoriais:
-//   where('municipioId','==',mun).where('equipeId','==',eq)
-//     .where('microareaId','in',minhasMicroareas)              // ACS
-//   where('municipioId','==',mun).where('equipeId','==',eq)    // eSF
-//   where('municipioId','==',mun)                              // Coordenação
-//
-// ---------------------------------------------------------------
-// Modelo de Dados Assumido
-// ---------------------------------------------------------------
-// TERR = campos territoriais denormalizados e obrigatórios:
-//   municipioId, equipeId, microareaId: string (1-64)
-//
-// microareas/{microareaId}
-//   id (== ID do doc), numero (1-16), descricao? (<= 200), acsId? (1-128),
-//   equipeId, municipioId
-//
-// domicilios/{domicilioId}
-//   id (== ID do doc), TERR, logradouro (2-200), numero (1-20), bairro (1-120),
-//   cep? (8 dígitos), quantidadeComodos/quantidadeMoradores: int 1-100,
-//   abastecimentoAgua/esgotamentoSanitario/destinoLixo: enums,
-//   saneamentoInadequado/adensamentoExcessivo: bool
-//
-// familias/{familiaId}
-//   id (== ID do doc), TERR, prontuarioFamiliar (1-32), domicilioId (existe,
-//   mesmo território), responsavelNome (2-120), responsavelId (1-128),
-//   contato? (1-80), status: ATIVA|MUDOU_SE|DESMEMBRADA,
-//   quantidadeMembros: int 1-50, ultimaClassificacaoRisco: enum,
-//   ultimaPontuacaoRisco: int 0-200, dataUltimaAvaliacao? (ISO 8601),
-//   ultimaAvaliacaoId? (1-128)
-//   Resumo de risco (ultima*): nasce R0/0 e só muda no mesmo batch que cria
-//   a avaliação apontada por ultimaAvaliacaoId, com valores idênticos.
-//   Imutáveis: id; TERR só muda por COORDENADOR_APS. Sem delete físico.
-//
-// individuos/{individuoId}
-//   id (== ID do doc), familiaId (existe, mesmo território), TERR,
-//   nome (2-120), cns? (15 dígitos), cpf? (11 dígitos),
-//   dataNascimento (YYYY-MM-DD), sexo: enum, parentesco (1-40),
-//   condicoesCronicas: map com exatamente 7 chaves booleanas
-//   Imutáveis: id, familiaId; TERR só muda por COORDENADOR_APS.
-//
-// avaliacoes_risco/{avaliacaoId}   — APPEND-ONLY
-//   id?, familiaId (existe, mesmo território), TERR,
-//   avaliadorId (== auth.uid), avaliadorNome (1-120; == token.name se houver),
-//   avaliadorPerfil (== claim perfil), dataAvaliacao (ISO 8601),
-//   versaoEscala (1-64), pontuacaoTotal: int 0-200, classificacao: enum,
-//   regraDecisao (1-500), fatoresDeterminantes: list (<= 50),
-//   indicadoresNaoPontuados?: list (<= 50),
-//   comparativoAvaliacaoAnterior?: map,
-//   registradoEm: timestamp (== request.time, via serverTimestamp())
-//   LIMITAÇÃO: regras não iteram listas. O conteúdo de cada fator e a
-//   invariante "soma == pontuacaoTotal" são validados pelo Zod
-//   (AvaliacaoRiscoSchema) e serão revalidados no servidor (functions/).
-//
-// logs_auditoria/{logId}   — APPEND-ONLY
-//   usuarioId (== auth.uid), perfil (== claim), municipioId (== claim),
-//   acao: enum, recursoTipo: enum, recursoId (1-128, anônimo),
-//   dataHora (ISO 8601), justificativa? (1-500),
-//   registradoEm: timestamp (== request.time)
-//   Nunca contém nome, CPF, CNS ou condição de saúde.
-//
-// ===============================================================
-
+// PET-Saúde — protótipo local. Escritas canônicas somente via backend.
+// tenants/{tenantId}/vinculos/{uid}: uid, tenantId=municipioId, perfil,
+// equipeId?, microareaIds, status ATIVO|INATIVO, versaoAcesso.
+// Dados de saúde em tenants/{tenantId}/{familias,domicilios,individuos,
+// avaliacoes_risco}; cada documento preserva município/equipe/microárea.
+// Claims são emitidas pelo backend e comparadas com vínculo vigente.
+// logs_auditoria: município e metadados sem dados clínicos.
+// operacoes: recibos de sincronização com uid; sem leitura pública.
+// Caminhos legados na raiz e coleções não declaradas: negados.
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // =============================================================
-    // Funções auxiliares
-    // =============================================================
-
-    function isAuthenticated() {
+    function identidadeInstitucional() {
       return request.auth != null
-        && request.auth.token.perfil is string
-        && request.auth.token.municipioId is string;
+        && request.auth.token.email is string
+        && request.auth.token.email.lower().matches('^[^\\s@]+@ufms\\.br$')
+        && request.auth.token.email_verified == true
+        && request.auth.token.firebase.sign_in_provider == 'google.com';
     }
 
-    function perfil() {
-      return request.auth.token.perfil;
+    function vinculo(tenantId) {
+      return get(/databases/$(database)/documents/tenants/$(tenantId)/vinculos/$(request.auth.uid)).data;
     }
 
-    function isAdmin() {
-      return isAuthenticated() && perfil() == 'ADMIN';
+    function acessoVigente(tenantId) {
+      let c = request.auth.token;
+      let v = vinculo(tenantId);
+      return identidadeInstitucional()
+        && c.tenantId == tenantId && c.municipioId == tenantId
+        && v.uid == request.auth.uid && v.tenantId == tenantId
+        && v.municipioId == tenantId && v.status == 'ATIVO'
+        && c.versaoAcesso == v.versaoAcesso
+        && c.perfil == v.perfil
+        && c.perfil in ['ACS', 'ENFERMEIRO', 'MEDICO', 'TECNICO_ENFERMAGEM',
+          'CIRURGIAO_DENTISTA', 'COORDENADOR_APS', 'ADMIN']
+        && (c.perfil in ['ADMIN', 'COORDENADOR_APS']
+          || (c.equipeId == v.equipeId && c.equipeId is string && c.equipeId.size() > 0
+            && (c.perfil != 'ACS' || (c.microareaIds == v.microareaIds
+              && c.microareaIds is list && c.microareaIds.size() > 0))));
     }
 
-    function isCoordenador() {
-      return isAuthenticated() && perfil() == 'COORDENADOR_APS';
-    }
-
-    function isProfissionalEquipe() {
-      return perfil() in ['ENFERMEIRO', 'MEDICO', 'TECNICO_ENFERMAGEM', 'CIRURGIAO_DENTISTA'];
-    }
-
-    // O documento d pertence ao território do usuário autenticado?
-    function noTerritorio(d) {
-      return isAuthenticated()
-        && d.municipioId == request.auth.token.municipioId
-        && (
-          (perfil() == 'ACS'
-            && request.auth.token.equipeId is string
-            && request.auth.token.microareaIds is list
+    function noTerritorio(tenantId, d) {
+      return acessoVigente(tenantId)
+        && d.municipioId == tenantId
+        && (request.auth.token.perfil == 'COORDENADOR_APS'
+          || (request.auth.token.perfil in ['ACS', 'ENFERMEIRO', 'MEDICO',
+                'TECNICO_ENFERMAGEM', 'CIRURGIAO_DENTISTA']
             && d.equipeId == request.auth.token.equipeId
-            && d.microareaId in request.auth.token.microareaIds)
-          || (isProfissionalEquipe()
-            && request.auth.token.equipeId is string
-            && d.equipeId == request.auth.token.equipeId)
-          || perfil() == 'COORDENADOR_APS'
-        );
+            && (request.auth.token.perfil != 'ACS'
+              || d.microareaId in request.auth.token.microareaIds)));
     }
 
-    function isStr(v, minLen, maxLen) {
-      return v is string && v.size() >= minLen && v.size() <= maxLen;
+    match /tenants/{tenantId} {
+      allow read: if acessoVigente(tenantId);
+      allow write: if false;
+
+      match /vinculos/{uid} {
+        // Listagem e gestão administrativas passam pelas funções auditadas.
+        allow get: if acessoVigente(tenantId) && uid == request.auth.uid;
+        allow list, write: if false;
+      }
+      match /microareas/{id} {
+        allow read: if acessoVigente(tenantId) && resource.data.municipioId == tenantId;
+        allow write: if false;
+      }
+      match /{colecao}/{id} {
+        allow read: if colecao in ['familias', 'domicilios', 'individuos', 'avaliacoes_risco']
+          && noTerritorio(tenantId, resource.data);
+        allow write: if false;
+      }
+      match /logs_auditoria/{id} {
+        allow read: if acessoVigente(tenantId)
+          && request.auth.token.perfil in ['ADMIN', 'COORDENADOR_APS']
+          && resource.data.municipioId == tenantId;
+        allow write: if false;
+      }
+      match /operacoes/{id} {
+        allow read, write: if false;
+      }
     }
-
-    function isOptStr(data, field, minLen, maxLen) {
-      return !(field in data) || isStr(data[field], minLen, maxLen);
-    }
-
-    function isIntRange(v, minV, maxV) {
-      return v is int && v >= minV && v <= maxV;
-    }
-
-    function isIsoDateTime(v) {
-      return v is string && v.size() <= 40
-        && v.matches('^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$');
-    }
-
-    function isIsoDate(v) {
-      return v is string && v.matches('^\\d{4}-\\d{2}-\\d{2}$');
-    }
-
-    function isValidTerritorio(data) {
-      return isStr(data.municipioId, 1, 64)
-        && isStr(data.equipeId, 1, 64)
-        && isStr(data.microareaId, 1, 64);
-    }
-
-    function territorioInalterado() {
-      return !request.resource.data.diff(resource.data).affectedKeys()
-        .hasAny(['municipioId', 'equipeId', 'microareaId']);
-    }
-
-    function mesmoTerritorio(a, b) {
-      return a.municipioId == b.municipioId
-        && a.equipeId == b.equipeId
-        && a.microareaId == b.microareaId;
-    }
-
-    function faixasRisco() {
-      return ['SEM_RISCO_R0', 'RISCO_MENOR_R1', 'RISCO_MEDIO_R2', 'RISCO_MAIOR_R3'];
-    }
-
-    function docPath(colecao, id) {
-      return /databases/$(database)/documents/$(colecao)/$(id);
-    }
-
-    // =============================================================
-    // Validadores de domínio (usados em create E update)
-    // =============================================================
-
-    function isValidMicroarea(data, microareaId) {
-      return data.keys().hasAll(['id', 'numero', 'equipeId', 'municipioId'])
-        && data.keys().hasOnly(['id', 'numero', 'descricao', 'acsId', 'equipeId', 'municipioId'])
-        && data.id == microareaId
-        && isStr(data.numero, 1, 16)
-        && isOptStr(data, 'descricao', 0, 200)
-        && isOptStr(data, 'acsId', 1, 128)
-        && isStr(data.equipeId, 1, 64)
-        && isStr(data.municipioId, 1, 64);
-    }
-
-    function isValidDomicilio(data, domicilioId) {
-      return data.keys().hasAll([
-          'id', 'municipioId', 'equipeId', 'microareaId', 'logradouro', 'numero', 'bairro',
-          'quantidadeComodos', 'quantidadeMoradores', 'abastecimentoAgua',
-          'esgotamentoSanitario', 'destinoLixo', 'saneamentoInadequado', 'adensamentoExcessivo'])
-        && data.keys().hasOnly([
-          'id', 'municipioId', 'equipeId', 'microareaId', 'logradouro', 'numero', 'bairro', 'cep',
-          'quantidadeComodos', 'quantidadeMoradores', 'abastecimentoAgua',
-          'esgotamentoSanitario', 'destinoLixo', 'saneamentoInadequado', 'adensamentoExcessivo'])
-        && data.id == domicilioId
-        && isValidTerritorio(data)
-        && isStr(data.logradouro, 2, 200)
-        && isStr(data.numero, 1, 20)
-        && isStr(data.bairro, 1, 120)
-        && (!('cep' in data) || (data.cep is string && data.cep.matches('^\\d{8}$')))
-        && isIntRange(data.quantidadeComodos, 1, 100)
-        && isIntRange(data.quantidadeMoradores, 1, 100)
-        && data.abastecimentoAgua in ['REDE_ENCANADA', 'POCO', 'CISTERNA', 'OUTRO']
-        && data.esgotamentoSanitario in ['REDE_COLETORA', 'FOSSA_SEPTICA', 'CEU_ABERTO', 'OUTRO']
-        && data.destinoLixo in ['COLETADO', 'QUEIMADO', 'ENTERRADO', 'CEU_ABERTO']
-        && data.saneamentoInadequado is bool
-        && data.adensamentoExcessivo is bool;
-    }
-
-    function isValidFamilia(data, familiaId) {
-      return data.keys().hasAll([
-          'id', 'prontuarioFamiliar', 'domicilioId', 'municipioId', 'equipeId', 'microareaId',
-          'responsavelNome', 'responsavelId', 'status', 'quantidadeMembros',
-          'ultimaClassificacaoRisco', 'ultimaPontuacaoRisco'])
-        && data.keys().hasOnly([
-          'id', 'prontuarioFamiliar', 'domicilioId', 'municipioId', 'equipeId', 'microareaId',
-          'responsavelNome', 'responsavelId', 'contato', 'status', 'quantidadeMembros',
-          'ultimaClassificacaoRisco', 'ultimaPontuacaoRisco', 'dataUltimaAvaliacao',
-          'ultimaAvaliacaoId'])
-        && data.id == familiaId
-        && isValidTerritorio(data)
-        && isStr(data.prontuarioFamiliar, 1, 32)
-        && isStr(data.domicilioId, 1, 128)
-        && isStr(data.responsavelNome, 2, 120)
-        && isStr(data.responsavelId, 1, 128)
-        && isOptStr(data, 'contato', 1, 80)
-        && data.status in ['ATIVA', 'MUDOU_SE', 'DESMEMBRADA']
-        && isIntRange(data.quantidadeMembros, 1, 50)
-        && data.ultimaClassificacaoRisco in faixasRisco()
-        && isIntRange(data.ultimaPontuacaoRisco, 0, 200)
-        && (!('dataUltimaAvaliacao' in data) || isIsoDateTime(data.dataUltimaAvaliacao))
-        && isOptStr(data, 'ultimaAvaliacaoId', 1, 128)
-        // Domicílio deve existir no mesmo território
-
-        && exists(docPath('domicilios', data.domicilioId))
-        && mesmoTerritorio(get(docPath('domicilios', data.domicilioId)).data, data);
-    }
-
-    // Família nova começa sem avaliação: resumo R0 / 0 pontos.
-    function resumoRiscoInicial(data) {
-      return data.ultimaClassificacaoRisco == 'SEM_RISCO_R0'
-        && data.ultimaPontuacaoRisco == 0
-        && !('dataUltimaAvaliacao' in data)
-        && !('ultimaAvaliacaoId' in data);
-    }
-
-    // O resumo de risco da família (cópia para o painel) só muda no MESMO
-    // batch que cria a avaliação correspondente, com valores idênticos.
-    // Impede alterar a prioridade de uma família sem avaliação auditável.
-    function resumoRiscoConsistente(data, familiaId) {
-      let camposResumo = ['ultimaClassificacaoRisco', 'ultimaPontuacaoRisco',
-        'dataUltimaAvaliacao', 'ultimaAvaliacaoId'];
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(camposResumo)
-        || (
-          'ultimaAvaliacaoId' in data
-          && !exists(docPath('avaliacoes_risco', data.ultimaAvaliacaoId))
-          && existsAfter(docPath('avaliacoes_risco', data.ultimaAvaliacaoId))
-          && getAfter(docPath('avaliacoes_risco', data.ultimaAvaliacaoId)).data.familiaId == familiaId
-          && getAfter(docPath('avaliacoes_risco', data.ultimaAvaliacaoId)).data.classificacao == data.ultimaClassificacaoRisco
-          && getAfter(docPath('avaliacoes_risco', data.ultimaAvaliacaoId)).data.pontuacaoTotal == data.ultimaPontuacaoRisco
-          && getAfter(docPath('avaliacoes_risco', data.ultimaAvaliacaoId)).data.dataAvaliacao == data.dataUltimaAvaliacao
-        );
-    }
-
-    function isValidCondicoesCronicas(c) {
-      return c is map
-        && c.keys().hasAll(['hipertenso', 'diabetico', 'acamado', 'deficienciaFisica',
-          'deficienciaMental', 'desnutricaoGrave', 'usoAbusivoDrogas'])
-        && c.keys().hasOnly(['hipertenso', 'diabetico', 'acamado', 'deficienciaFisica',
-          'deficienciaMental', 'desnutricaoGrave', 'usoAbusivoDrogas'])
-        && c.hipertenso is bool && c.diabetico is bool && c.acamado is bool
-        && c.deficienciaFisica is bool && c.deficienciaMental is bool
-        && c.desnutricaoGrave is bool && c.usoAbusivoDrogas is bool;
-    }
-
-    function isValidIndividuo(data, individuoId) {
-      return data.keys().hasAll([
-          'id', 'familiaId', 'municipioId', 'equipeId', 'microareaId', 'nome',
-          'dataNascimento', 'sexo', 'parentesco', 'condicoesCronicas'])
-        && data.keys().hasOnly([
-          'id', 'familiaId', 'municipioId', 'equipeId', 'microareaId', 'nome', 'cns', 'cpf',
-          'dataNascimento', 'sexo', 'parentesco', 'condicoesCronicas'])
-        && data.id == individuoId
-        && isValidTerritorio(data)
-        && isStr(data.familiaId, 1, 128)
-        && isStr(data.nome, 2, 120)
-        && (!('cns' in data) || (data.cns is string && data.cns.matches('^\\d{15}$')))
-        && (!('cpf' in data) || (data.cpf is string && data.cpf.matches('^\\d{11}$')))
-        && isIsoDate(data.dataNascimento)
-        && data.sexo in ['MASCULINO', 'FEMININO', 'OUTRO']
-        && isStr(data.parentesco, 1, 40)
-        && isValidCondicoesCronicas(data.condicoesCronicas)
-        // Família deve existir no mesmo território
-        && exists(docPath('familias', data.familiaId))
-        && mesmoTerritorio(get(docPath('familias', data.familiaId)).data, data);
-    }
-
-    function isValidComparativo(data) {
-      return !('comparativoAvaliacaoAnterior' in data) || (
-        data.comparativoAvaliacaoAnterior is map
-        && data.comparativoAvaliacaoAnterior.keys().hasAll([
-          'classificacaoAnterior', 'pontuacaoAnterior', 'variacaoPontos',
-          'evolucaoRisco', 'fatoresAdicionados', 'fatoresResolvidos'])
-        && data.comparativoAvaliacaoAnterior.keys().hasOnly([
-          'avaliacaoAnteriorId', 'dataAvaliacaoAnterior', 'classificacaoAnterior',
-          'pontuacaoAnterior', 'variacaoPontos', 'evolucaoRisco',
-          'fatoresAdicionados', 'fatoresResolvidos'])
-        && data.comparativoAvaliacaoAnterior.classificacaoAnterior in faixasRisco()
-        && isIntRange(data.comparativoAvaliacaoAnterior.pontuacaoAnterior, 0, 200)
-        && isIntRange(data.comparativoAvaliacaoAnterior.variacaoPontos, -200, 200)
-        && data.comparativoAvaliacaoAnterior.evolucaoRisco in ['AGRAVAMENTO', 'ESTAVEL', 'MELHORIA']
-        && data.comparativoAvaliacaoAnterior.fatoresAdicionados is list
-        && data.comparativoAvaliacaoAnterior.fatoresAdicionados.size() <= 50
-        && data.comparativoAvaliacaoAnterior.fatoresResolvidos is list
-        && data.comparativoAvaliacaoAnterior.fatoresResolvidos.size() <= 50
-      );
-    }
-
-    function isValidAvaliacaoRisco(data) {
-      return data.keys().hasAll([
-          'familiaId', 'municipioId', 'equipeId', 'microareaId', 'avaliadorId',
-          'avaliadorNome', 'avaliadorPerfil', 'dataAvaliacao', 'versaoEscala',
-          'pontuacaoTotal', 'classificacao', 'regraDecisao', 'fatoresDeterminantes',
-          'registradoEm'])
-        && data.keys().hasOnly([
-          'id', 'familiaId', 'municipioId', 'equipeId', 'microareaId', 'avaliadorId',
-          'avaliadorNome', 'avaliadorPerfil', 'dataAvaliacao', 'versaoEscala',
-          'pontuacaoTotal', 'classificacao', 'regraDecisao', 'fatoresDeterminantes',
-          'indicadoresNaoPontuados', 'comparativoAvaliacaoAnterior', 'registradoEm'])
-        && isOptStr(data, 'id', 1, 128)
-        && isValidTerritorio(data)
-        && isStr(data.familiaId, 1, 128)
-        // Identidade do avaliador não pode ser forjada
-        && data.avaliadorId == request.auth.uid
-        && data.avaliadorPerfil == perfil()
-        && isStr(data.avaliadorNome, 1, 120)
-        && (!('name' in request.auth.token) || data.avaliadorNome == request.auth.token.name)
-        && isIsoDateTime(data.dataAvaliacao)
-        && data.registradoEm == request.time
-        && isStr(data.versaoEscala, 1, 64)
-        && isIntRange(data.pontuacaoTotal, 0, 200)
-        && data.classificacao in faixasRisco()
-        && isStr(data.regraDecisao, 1, 500)
-        && data.fatoresDeterminantes is list && data.fatoresDeterminantes.size() <= 50
-        && (!('indicadoresNaoPontuados' in data)
-          || (data.indicadoresNaoPontuados is list && data.indicadoresNaoPontuados.size() <= 50))
-        && isValidComparativo(data)
-        // Família deve existir no mesmo território declarado na avaliação
-        && exists(docPath('familias', data.familiaId))
-        && mesmoTerritorio(get(docPath('familias', data.familiaId)).data, data);
-    }
-
-    function isValidLogAuditoria(data) {
-      return data.keys().hasAll([
-          'usuarioId', 'perfil', 'municipioId', 'acao', 'recursoTipo', 'recursoId',
-          'dataHora', 'registradoEm'])
-        && data.keys().hasOnly([
-          'usuarioId', 'perfil', 'municipioId', 'acao', 'recursoTipo', 'recursoId',
-          'dataHora', 'justificativa', 'registradoEm'])
-        && data.usuarioId == request.auth.uid
-        && data.perfil == perfil()
-        && data.municipioId == request.auth.token.municipioId
-        && data.acao in [
-          'CRIAR_FAMILIA', 'ATUALIZAR_FAMILIA', 'INATIVAR_FAMILIA',
-          'CRIAR_DOMICILIO', 'ATUALIZAR_DOMICILIO',
-          'CRIAR_INDIVIDUO', 'ATUALIZAR_INDIVIDUO',
-          'CRIAR_AVALIACAO_RISCO', 'CONSULTAR_FAMILIA',
-          'CRIAR_MICROAREA', 'ATUALIZAR_MICROAREA']
-        && data.recursoTipo in ['FAMILIA', 'DOMICILIO', 'INDIVIDUO', 'AVALIACAO_RISCO', 'MICROAREA']
-        && isStr(data.recursoId, 1, 128)
-        && isIsoDateTime(data.dataHora)
-        && isOptStr(data, 'justificativa', 1, 500)
-        && data.registradoEm == request.time;
-    }
-
-    // =============================================================
-    // Coleções
-    // =============================================================
-
-    match /microareas/{microareaId} {
-      allow read: if isAuthenticated()
-        && resource.data.municipioId == request.auth.token.municipioId;
-      allow create: if (isAdmin() || isCoordenador())
-        && isValidMicroarea(request.resource.data, microareaId)
-        && request.resource.data.municipioId == request.auth.token.municipioId;
-      allow update: if (isAdmin() || isCoordenador())
-        && resource.data.municipioId == request.auth.token.municipioId
-        && isValidMicroarea(request.resource.data, microareaId)
-        && request.resource.data.municipioId == resource.data.municipioId;
-      allow delete: if false;
-    }
-
-    match /domicilios/{domicilioId} {
-      allow read: if noTerritorio(resource.data);
-      allow create: if noTerritorio(request.resource.data)
-        && isValidDomicilio(request.resource.data, domicilioId);
-      allow update: if noTerritorio(resource.data)
-        && noTerritorio(request.resource.data)
-        && isValidDomicilio(request.resource.data, domicilioId)
-        && (territorioInalterado() || isCoordenador());
-      allow delete: if false;
-    }
-
-    match /familias/{familiaId} {
-      allow read: if noTerritorio(resource.data);
-      allow create: if noTerritorio(request.resource.data)
-        && isValidFamilia(request.resource.data, familiaId)
-        && resumoRiscoInicial(request.resource.data);
-      allow update: if noTerritorio(resource.data)
-        && noTerritorio(request.resource.data)
-        && isValidFamilia(request.resource.data, familiaId)
-        && resumoRiscoConsistente(request.resource.data, familiaId)
-        && (territorioInalterado() || isCoordenador());
-      // Exclusão apenas lógica (status MUDOU_SE / DESMEMBRADA).
-      allow delete: if false;
-    }
-
-    match /individuos/{individuoId} {
-      allow read: if noTerritorio(resource.data);
-      allow create: if noTerritorio(request.resource.data)
-        && isValidIndividuo(request.resource.data, individuoId);
-      allow update: if noTerritorio(resource.data)
-        && noTerritorio(request.resource.data)
-        && isValidIndividuo(request.resource.data, individuoId)
-        && request.resource.data.familiaId == resource.data.familiaId
-        && (territorioInalterado() || isCoordenador());
-      allow delete: if false;
-    }
-
-    match /avaliacoes_risco/{avaliacaoId} {
-      allow read: if noTerritorio(resource.data);
-      allow create: if noTerritorio(request.resource.data)
-        && isValidAvaliacaoRisco(request.resource.data);
-      // Invariante de domínio: avaliações são imutáveis.
-      allow update, delete: if false;
-    }
-
-    match /logs_auditoria/{logId} {
-      allow read: if isAdmin()
-        || (isCoordenador() && resource.data.municipioId == request.auth.token.municipioId);
-      allow create: if isAuthenticated() && isValidLogAuditoria(request.resource.data);
-      // Invariante de domínio: auditoria é append-only.
-      allow update, delete: if false;
-    }
-
-    // Qualquer outro caminho: negado por padrão.
   }
 }

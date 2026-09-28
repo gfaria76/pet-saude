@@ -25,7 +25,7 @@ erDiagram
 
 ### 1.1. Campos territoriais denormalizados
 
-`Domicilio`, `Familia`, `Individuo` e `AvaliacaoRisco` carregam **`municipioId`, `equipeId` e `microareaId`**. Isso permite que `firestore.rules` verifique o território de cada documento sem consultas extras, e que as listagens filtrem pelo território do profissional. Os três campos só mudam em uma transferência territorial, feita pela coordenação (ver invariante 3).
+`Domicilio`, `Familia`, `Individuo` e `AvaliacaoRisco` carregam **`municipioId`, `equipeId` e `microareaId`**. Isso permite que `firestore.rules` verifique o território de cada documento sem consultas extras, e que as listagens filtrem pelo território do profissional. Os três campos só podem mudar em transferência territorial pela coordenação (ver invariante 3); o endpoint de transferência ainda não está implementado.
 
 ---
 
@@ -57,7 +57,7 @@ Núcleo familiar coabitante no domicílio.
 
 - **Atributos:** `prontuarioFamiliar`, `domicilioId`, território, `responsavelNome`, `responsavelId`, `contato` (opcional — previsto no Relatório Técnico), `status` (`ATIVA`, `MUDOU_SE`, `DESMEMBRADA`), `quantidadeMembros`, resumo da última avaliação (`ultimaClassificacaoRisco`, `ultimaPontuacaoRisco`, `dataUltimaAvaliacao`, `ultimaAvaliacaoId`).
 - **Invariante:** exatamente um Responsável Familiar ativo.
-- O resumo da última avaliação é uma **cópia de conveniência** para o painel; a fonte da verdade é o histórico em `AvaliacaoRisco`. Uma família nasce com resumo R0 / 0 pontos, e o resumo só muda **no mesmo lote de gravação** que cria a avaliação apontada por `ultimaAvaliacaoId`, com valores idênticos (garantido em `firestore.rules`).
+- O resumo da última avaliação é uma **cópia de conveniência** para o painel; a fonte da verdade é o histórico em `AvaliacaoRisco`. Uma família nasce com resumo R0 / 0 pontos, e o resumo só muda **na mesma transação do servidor** que cria a avaliação apontada por `ultimaAvaliacaoId`, com valores idênticos (validado em `functions/src/avaliacoes.ts`; escrita cliente negada em `firestore.rules`).
 
 ### 2.6. `Individuo` — schema `IndividuoSchema`
 
@@ -86,8 +86,8 @@ Registro **append-only** de criação, alteração ou exclusão lógica de `Fami
 
 1. **Imutabilidade das avaliações:** `AvaliacaoRisco` nunca sofre update nem delete. Retificação ⇒ nova avaliação, que referencia a anterior no delta.
 2. **Explicabilidade:** uma `AvaliacaoRisco` é inválida se a soma dos pontos de `fatoresDeterminantes` for diferente de `pontuacaoTotal` (validado pelo `.refine` do Zod; as regras do Firestore não conseguem iterar listas, por isso a revalidação no servidor está planejada em `functions/`).
-3. **Isolamento territorial:** família e domicílio pertencem a uma microárea e a uma equipe por vez. Transferência só pela coordenação, com registro em `LogAuditoria`.
-4. **Auditoria append-only:** toda criação, alteração ou exclusão lógica gera um `LogAuditoria`, que nunca é atualizado ou apagado.
+3. **Isolamento territorial:** família e domicílio pertencem a uma microárea e a uma equipe por vez. Transferência só pela coordenação, com registro em `LogAuditoria`; endpoint ainda pendente.
+4. **Auditoria append-only:** toda criação, alteração ou exclusão lógica deve gerar um `LogAuditoria`, que nunca é atualizado ou apagado. Implementado para avaliação e gestão de vínculos; demais mutações ainda dependem de endpoints.
 5. **Sem exclusão física:** famílias, domicílios e indivíduos são inativados por `status`, nunca apagados.
 
 ---
@@ -98,3 +98,26 @@ Registro **append-only** de criação, alteração ou exclusão lógica de `Fami
 - Camadas e fluxo da avaliação: [`architecture.md`](./architecture.md)
 - Proteção de dados e RBAC: [`security_privacy.md`](./security_privacy.md)
 - Apresentação da classificação: [`ui_guidelines.md`](./ui_guidelines.md)
+
+## 5. Contratos operacionais implementados localmente
+
+O namespace canônico é `tenants/{municipioId}/...`. Caminhos legados na raiz e escrita cliente são negados. Os painéis demonstrativos mantêm fixtures em memória; nenhum dado remoto foi migrado.
+
+- `TenantSchema`: município e nome; documento de metadados, sem saúde.
+- `vinculoSchema` e `claimsAcessoSchema`: UID no vínculo, município/tenant iguais, perfil existente, equipe/microáreas, status ATIVO/INATIVO e versão de acesso. Backend administra; regras consultam vínculo ativo para bloquear tokens de versão anterior.
+- `FamiliaVersionadaSchema`: família existente mais `versaoCadastro` não negativa. Legado sintético assume zero; futuros endpoints de cadastro devem incrementar versão para detectar conflitos.
+- `OperacaoAvaliacaoSchema`: ID UUID estável, município, família, versão base do cadastro, avaliação anterior, escala, coleta e 13 respostas explícitas únicas. Não aceita pontuação fornecida pelo cliente. Rascunhos locais podem ser incompletos e não produzem classificação.
+- `AvaliacaoCanonicaSchema`: contrato de avaliação existente (incluindo soma dos fatores), respostas completas e ID da operação. `registradoEm` é acrescentado pelo servidor.
+- `ReciboOperacaoSchema`: CONFIRMADA exige ID da avaliação; CONFLITO exige motivo. Ambos incluem ID da operação e horário do servidor.
+- `RegistroOperacaoSchema`: UID, município, hash do conteúdo e recibo; conflito preserva a operação original para revisão. O ID do documento deriva de UID/tenant/ID da operação. Escrita e leitura cliente são negadas.
+- `LogAcessoSchema`: aprovação/revogação de vínculo, somente IDs, perfil ADMIN, ação e horário; não contém nome, e-mail ou condições clínicas. Complementa `LogAuditoriaSchema` das avaliações.
+
+Histórico e resumo são gravados junto ao recibo e à auditoria na transação. Mesma operação/conteúdo devolve recibo anterior; conteúdo diferente com mesmo ID é rejeitado. Vínculo e território são revalidados mesmo no reenvio. Cadastro ou base clínica alterada preserva conflito sem sobrescrever histórico.
+
+## Incremento online: cadastro, transferência e conflitos
+
+O cadastro inicial cria domicílio, um responsável e família em transação, com recibo idempotente em `operacoes_cadastro` e logs por recurso. Não cria avaliação; o resumo inicial do contrato deve aparecer como **Sem avaliação**. Atualizações cadastrais neste incremento limitam-se a prontuário, contato e status. Gestão completa de membros e edição do domicílio permanecem pendentes.
+
+Transferências exigem coordenação da APS no mesmo município, versão atual, destino cadastrado e domicílio não compartilhado; atualizam família, domicílio e até 50 membros atomicamente. Avaliações anteriores conservam território e conteúdo originais. A equipe de destino não recebe acesso automático ao histórico do território anterior.
+
+A consulta de conflitos ocorre por callable, somente para o autor com vínculo e território atuais. A revisão compara os 13 indicadores e exige nova confirmação, gerando outro identificador; a operação original permanece imutável. Recibos e operações não são legíveis diretamente pelo cliente. Paginação de famílias preserva filtros territoriais em cada página. Nenhum dado clínico deste incremento é persistido offline no navegador.

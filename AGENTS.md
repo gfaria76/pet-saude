@@ -59,7 +59,7 @@ Atue como engenheiro de software sênior em Informática em Saúde. O sistema ap
 
 - Mobile-first; poucos toques para reavaliar uma família.
 - Faixa de risco sempre com **cor + ícone + texto** (acessível a daltônicos). Cores e ícones vêm do mapa central `app/utils/estiloFaixaRisco.ts`.
-- **Ícones:** Health Icons (`healthicons:`) via `@nuxt/icon`. Lucide só para controles genéricos (salvar, filtro, fechar…) listados no mapa central `app/utils/icones.ts`. Não use `lucide:` direto em componentes.
+- **Ícones:** Coleções Iconify padronizadas: Health Icons (`healthicons:`), Medical Icon (`medical-icon:`), Academicons (`academicons:`) e Weather Icons (`wi:`). Lucide exclusivamente para controles utilitários de tela (salvar, filtro, fechar…), centralizados em `app/utils/icones.ts`. Não use `lucide:` direto em componentes.
 - Explicação em 1 clique: a badge de risco abre o drawer com a soma, os indicadores, o autor e o delta.
 - Confirmação explícita para ações destrutivas.
 
@@ -71,12 +71,13 @@ O sistema é apoio à gestão do cuidado. Ele **não** diagnostica, não prescre
 
 | Item | Estado |
 | :--- | :--- |
-| Nuxt 4 + Vue 3.5, Tailwind (`@nuxtjs/tailwindcss`), `@nuxt/icon`, `@nuxt/fonts` | Em uso |
+| Nuxt 4 + Vue 3.5, Nuxt UI v4 (`@nuxt/ui`), Tailwind CSS v4, `@nuxt/icon` | Em uso |
 | Motor de risco puro em `shared/domain/risk-engine/` + testes Vitest (`tests/unit/`) | Em uso |
 | Schemas Zod em `shared/domain/schemas/` | Em uso (validação no cliente) |
 | `firestore.rules` com RBAC territorial + testes no Emulator (`tests/rules/`) | Em uso (protótipo, **não publicado**) |
-| Persistência no Firestore (repositórios, login, custom claims) | **Planejado** — hoje os dados são sintéticos em memória (`app/composables/useFamilias.ts`) |
-| Revalidação server-side + `LogAuditoria` via Cloud Functions (`functions/`) | **Planejado** |
+| Login, vínculos/claims e leitura Firestore | Implementados localmente em `/login`, `/administracao` e `/operacional`; sem deploy. Painéis anteriores continuam sintéticos em memória |
+| Revalidação server-side + auditoria via Cloud Functions (`functions/`) | Implementadas para avaliação transacional e gestão de vínculos; testadas em emuladores, sem deploy |
+| PWA + IndexedDB | Demonstração sintética em `/visitas` e `/sincronizacao`; armazenamento clínico real depende de política institucional |
 
 Ao escolher bibliotecas: prefira módulos oficiais do ecossistema Nuxt (<https://nuxt.com/modules>) e **confirme compatibilidade com Nuxt 4** — muitos módulos só suportam Nuxt 2/3.
 
